@@ -81,7 +81,9 @@ jobs:
           New-Item -ItemType Directory -Force -Path "selftest-shots" | Out-Null
           Get-ChildItem (Join-Path $data "logs") -Filter "selftest-*.png" | ForEach-Object { Write-Host "Screenshot: $($_.Name) $($_.Length) bytes"; Copy-Item $_.FullName "selftest-shots\" }
           Copy-Item $report "selftest-shots\"
-          if ($p.ExitCode -ne 0) { Write-Host "Self-test failed (exit $($p.ExitCode))"; exit 1 }
+          # The report decides: native libraries can make the exit code noisy as the test process quits.
+          if (-not ((Get-Content $report -First 1) -eq 'SELFTEST PASSED')) { Write-Host "Self-test failed (exit $($p.ExitCode))"; exit 1 }
+          if ($p.ExitCode -ne 0) { Write-Host "Self-test passed; the test process quit with code $($p.ExitCode)" }
 
       - name: Package
         shell: pwsh

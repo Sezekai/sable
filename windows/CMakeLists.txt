@@ -2,6 +2,10 @@
 cmake_minimum_required(VERSION 3.14)
 project(sable LANGUAGES CXX)
 
+# flutter_inappwebview_windows still uses <experimental/coroutine>, which newer
+# Visual Studio versions reject unless this is set.
+add_compile_definitions(_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)
+
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
 set(BINARY_NAME "Sable")

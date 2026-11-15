@@ -1,0 +1,189 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+
+import 'paths.dart';
+
+/// Book or light novel. It's only a field: one library holds both.
+enum Kind {
+  book('Book'),
+  ln('Light novel');
+
+  const Kind(this.label);
+  final String label;
+  static Kind byName(String? n) => n == 'ln' ? Kind.ln : Kind.book;
+}
+
+/// A folder the library is built from.
+class LibFolder {
+  LibFolder(this.path, {this.kind = Kind.book, this.collection = false});
+  String path;
+  Kind kind;
+
+  /// Books from downloaded packs; hidden all at once by "Show collections".
+  bool collection;
+
+  Map<String, dynamic> toJson() => {'path': path, 'kind': kind.name, 'collection': collection};
+  static LibFolder fromJson(Map m) => LibFolder(m['path'] as String? ?? '',
+      kind: Kind.byName(m['kind'] as String?), collection: m['collection'] as bool? ?? false);
+}
+
+enum PageLayout { auto, one, two }
+
+enum PageFlow { paged, scrolled }
+
+/// Reading look. A few options, like Lithium.
+class ReadingStyle {
+  String font = 'Literata'; // book | Literata | Inter | Georgia | Palatino Linotype
+  double size = 18; // px
+  double spacing = 1.5;
+  double margin = 48; // px either side
+  bool justify = true;
+  bool publisherStyles = false;
+  PageLayout layout = PageLayout.auto;
+  PageFlow flow = PageFlow.paged;
+  bool animate = true;
+
+  Map<String, dynamic> toJson() => {
+        'font': font,
+        'size': size,
+        'spacing': spacing,
+        'margin': margin,
+        'justify': justify,
+        'publisherStyles': publisherStyles,
+        'layout': layout.name,
+        'flow': flow.name,
+        'animate': animate,
+      };
+
+  void apply(Map m) {
+    font = m['font'] as String? ?? font;
+    if (!readingFonts.contains(font)) font = 'Literata';
+    size = ((m['size'] as num?)?.toDouble() ?? size).clamp(12, 36);
+    spacing = ((m['spacing'] as num?)?.toDouble() ?? spacing).clamp(1.0, 2.4);
+    margin = ((m['margin'] as num?)?.toDouble() ?? margin).clamp(0, 160);
+    justify = m['justify'] as bool? ?? justify;
+    publisherStyles = m['publisherStyles'] as bool? ?? publisherStyles;
+    layout = PageLayout.values.firstWhere((e) => e.name == m['layout'], orElse: () => layout);
+    flow = PageFlow.values.firstWhere((e) => e.name == m['flow'], orElse: () => flow);
+    animate = m['animate'] as bool? ?? animate;
+  }
+}
+
+const readingFonts = ['book', 'Literata', 'Inter', 'Georgia', 'Palatino Linotype'];
+
+String fontLabel(String f) => f == 'book' ? "The book's own" : f;
+
+List<LibFolder> defaultFolders() => [
+      LibFolder(r'E:\Documents\LIGHT NOVELS', kind: Kind.ln),
+      LibFolder(r'E:\Documents\BOOKS'),
+      LibFolder(r'E:\Documents\BOOKS I OWN'),
+      LibFolder(r'E:\Documents\BOOK Collections', collection: true),
+    ];
+
+class Settings extends ChangeNotifier {
+  Settings._();
+  static final Settings I = Settings._();
+
+  List<LibFolder> folders = defaultFolders();
+  bool showCollections = true;
+  final ReadingStyle style = ReadingStyle();
+  int idleMinutes = 3;
+  bool watchFolders = true;
+  bool progressLine = true;
+  bool skipRead = false;
+  bool pdfDarkPages = false;
+
+  // Library view
+  String gridStyle = 'comfortable'; // comfortable | compact | cover
+  double tileSize = 168;
+  bool listView = false;
+  String sort = 'lastRead';
+  bool sortDesc = true;
+  bool showContinue = true;
+  Map<String, String> presets = {};
+
+  Map<String, dynamic> windowState = {};
+
+  void load() {
+    try {
+      final f = File(AppPaths.I.settingsFile);
+      if (!f.existsSync()) return;
+      final m = jsonDecode(f.readAsStringSync()) as Map;
+      final fl = m['folders'];
+      if (fl is List) folders = fl.whereType<Map>().map(LibFolder.fromJson).where((x) => x.path.isNotEmpty).toList();
+      showCollections = m['showCollections'] as bool? ?? true;
+      if (m['style'] is Map) style.apply(m['style'] as Map);
+      idleMinutes = ((m['idleMinutes'] as num?)?.toInt() ?? 3).clamp(1, 30);
+      watchFolders = m['watchFolders'] as bool? ?? true;
+      progressLine = m['progressLine'] as bool? ?? true;
+      skipRead = m['skipRead'] as bool? ?? false;
+      pdfDarkPages = m['pdfDarkPages'] as bool? ?? false;
+      gridStyle = m['gridStyle'] as String? ?? gridStyle;
+      tileSize = ((m['tileSize'] as num?)?.toDouble() ?? tileSize).clamp(110, 300);
+      listView = m['listView'] as bool? ?? false;
+      sort = m['sort'] as String? ?? sort;
+      sortDesc = m['sortDesc'] as bool? ?? sortDesc;
+      showContinue = m['showContinue'] as bool? ?? true;
+      presets = (m['presets'] as Map?)?.cast<String, String>() ?? {};
+      windowState = (m['window'] as Map?)?.cast<String, dynamic>() ?? {};
+    } catch (_) {}
+  }
+
+  Map<String, dynamic> toJson() => {
+        'version': 1,
+        'folders': folders.map((f) => f.toJson()).toList(),
+        'showCollections': showCollections,
+        'style': style.toJson(),
+        'idleMinutes': idleMinutes,
+        'watchFolders': watchFolders,
+        'progressLine': progressLine,
+        'skipRead': skipRead,
+        'pdfDarkPages': pdfDarkPages,
+        'gridStyle': gridStyle,
+        'tileSize': tileSize,
+        'listView': listView,
+        'sort': sort,
+        'sortDesc': sortDesc,
+        'showContinue': showContinue,
+        'presets': presets,
+        'window': windowState,
+      };
+
+  /// Changes apply straight away; there's no Save button.
+  void save() {
+    try {
+      writeStringSafelySync(AppPaths.I.settingsFile, const JsonEncoder.withIndent('  ').convert(toJson()));
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  LibFolder? folderFor(String path) {
+    LibFolder? best;
+    for (final f in folders) {
+      final root = f.path.endsWith(r'\') || f.path.endsWith('/') ? f.path : '${f.path}${Platform.pathSeparator}';
+      if (path.toLowerCase().startsWith(root.toLowerCase()) && (best == null || f.path.length > best.path.length)) {
+        best = f;
+      }
+    }
+    return best;
+  }
+
+  void resetToDefaults() {
+    folders = defaultFolders();
+    showCollections = true;
+    style.apply(ReadingStyle().toJson());
+    idleMinutes = 3;
+    watchFolders = true;
+    progressLine = true;
+    skipRead = false;
+    gridStyle = 'comfortable';
+    tileSize = 168;
+    listView = false;
+    sort = 'lastRead';
+    sortDesc = true;
+    showContinue = true;
+    save();
+  }
+}

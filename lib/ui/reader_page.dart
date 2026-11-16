@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:material_ui/material_ui.dart';
@@ -159,6 +160,8 @@ class ReaderPageState extends State<ReaderPage> {
 
   @override
   void dispose() {
+    // No more commands to the book page while it's being taken down.
+    web = null;
     tracker.close();
     if (url != null) LocalServer.I.close(url!);
     if (ReaderControl.active == this) ReaderControl.active = null;
@@ -218,8 +221,13 @@ class ReaderPageState extends State<ReaderPage> {
         searching = false;
       case 'lightbox':
         lightbox = m['open'] == true;
+      case 'mouse':
+        _mouse(m['button'] as String? ?? '');
+        return;
       case 'error':
-        AppLog.I.warn('Book engine: ${m['message']}');
+        final msg = '${m['message']}';
+        // Harmless browser notice while the page lays itself out.
+        if (!msg.contains('ResizeObserver loop')) AppLog.I.warn('Book engine: $msg');
         return;
       case 'failed':
         error = 'This book couldn\'t be opened. It may be damaged or use a format Sable can\'t read.';
@@ -239,6 +247,7 @@ class ReaderPageState extends State<ReaderPage> {
   // ---------------- commands ----------------
 
   Future<void> cmd(String js) async {
+    if (!mounted) return;
     try {
       await web?.evaluateJavascript(source: js);
     } catch (e) {
@@ -365,6 +374,16 @@ class ReaderPageState extends State<ReaderPage> {
         if (panel != null) chrome = true;
       });
 
+  /// The mouse's back and forward buttons: turn pages, or leave the reader.
+  void _mouse(String button) {
+    tracker.activity();
+    if (Settings.I.mouseInReader == 'leave') {
+      if (button == 'back') back();
+      return;
+    }
+    button == 'back' ? prev() : next();
+  }
+
   // ---------------- keys ----------------
 
   /// Keys pressed while the book page has focus (page turns already happened there).
@@ -460,15 +479,31 @@ class ReaderPageState extends State<ReaderPage> {
         backgroundColor: t.pageBg,
         body: ListenableBuilder(
           listenable: Nav.I,
-          builder: (context, _) => Stack(children: [
-            Positioned.fill(child: _engine()),
-            if (!chrome && error == null) _statusLine(),
-            if (chrome) _topBar(),
-            if (chrome) _bottomBar(),
-            if (panel != null) _panel(),
-            if (endCard) _end(),
-            const ToastLayer(),
-          ]),
+          builder: (context, _) => Listener(
+            // The mouse's back and forward buttons (over a PDF or the bars).
+            onPointerDown: (e) {
+              if (e.buttons & kBackMouseButton != 0) _mouse('back');
+              if (e.buttons & kForwardMouseButton != 0) _mouse('forward');
+            },
+            child: Stack(children: [
+              // The book itself is drawn at the screen's own size, so it stays sharp.
+              Positioned.fill(child: UiScale(scale: 1 / Look.I.appScale, child: _engine())),
+              // The bars and panels follow "Reader controls size".
+              Positioned.fill(
+                child: UiScale(
+                  scale: Look.I.readerScale,
+                  child: Stack(children: [
+                    if (!chrome && error == null) _statusLine(),
+                    if (chrome) _topBar(),
+                    if (chrome) _bottomBar(),
+                    if (panel != null) _panel(),
+                    if (endCard) _end(),
+                    const ToastLayer(),
+                  ]),
+                ),
+              ),
+            ]),
+          ),
         ),
       ),
     );
@@ -705,7 +740,7 @@ class ReaderPageState extends State<ReaderPage> {
       right: 10,
       top: 64,
       bottom: chrome ? 96 : 10,
-      width: 360,
+      width: 400,
       child: Container(
         decoration: _barDeco,
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -865,15 +900,25 @@ class ReaderPageState extends State<ReaderPage> {
 
   Widget _styles() {
     final s = Settings.I.style;
-    Widget row(String label, Widget child) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+    final d = Settings.defaults.style;
+    Widget row(String label, Widget child, {bool changed = false, VoidCallback? reset}) => Padding(
+          padding: const EdgeInsets.symmetric(vertical: 5),
           child: Row(children: [
-            SizedBox(width: 92, child: Text(label, style: ts(c: tk.sec))),
+            SizedBox(width: 104, child: Text(label, style: ts(c: tk.sec))),
             Expanded(child: Align(alignment: Alignment.centerLeft, child: child)),
+            SizedBox(
+              width: lk.hControl,
+              child: changed && reset != null ? IconBtn(Icons.restart_alt, tooltip: 'Back to the default', onTap: reset) : null,
+            ),
           ]),
         );
     Widget sw(bool v, ValueChanged<bool> f) => Switch(value: v, onChanged: f, activeThumbColor: lk.acc);
-    return ListView(padding: const EdgeInsets.fromLTRB(14, 0, 14, 14), children: [
+    void set(void Function() f) {
+      f();
+      _styleChanged();
+    }
+
+    return ListView(padding: const EdgeInsets.fromLTRB(14, 0, 8, 14), children: [
       row(
           'Theme',
           Seg<String>(
@@ -883,23 +928,31 @@ class ReaderPageState extends State<ReaderPage> {
               Look.I.setTheme(v);
               _themeChanged();
             },
-          )),
+          ),
+          changed: Look.I.theme != 'OLED black',
+          reset: () {
+            Look.I.setTheme('OLED black');
+            _themeChanged();
+          }),
       row(
           'Pages',
           Seg<PageLayout>(
             value: s.layout,
             items: const [(PageLayout.auto, 'Auto'), (PageLayout.one, 'One'), (PageLayout.two, 'Two')],
-            onChanged: (v) {
-              s.layout = v;
-              _styleChanged();
-            },
-          )),
+            onChanged: (v) => set(() => s.layout = v),
+          ),
+          changed: s.layout != d.layout,
+          reset: () => set(() => s.layout = d.layout)),
       if (isPdf)
         row('Dark pages', sw(Settings.I.pdfDarkPages, (v) {
           Settings.I.pdfDarkPages = v;
           Settings.I.save();
           setState(() {});
-        })),
+        }), changed: Settings.I.pdfDarkPages, reset: () {
+          Settings.I.pdfDarkPages = false;
+          Settings.I.save();
+          setState(() {});
+        }),
       if (!isPdf) ...[
         row(
             'Font',
@@ -907,18 +960,19 @@ class ReaderPageState extends State<ReaderPage> {
               value: s.font,
               width: 200,
               items: [for (final f in readingFonts) (f, fontLabel(f))],
-              onChanged: (v) {
-                s.font = v;
-                _styleChanged();
-              },
-            )),
+              onChanged: (v) => set(() => s.font = v),
+            ),
+            changed: s.font != d.font,
+            reset: () => set(() => s.font = d.font)),
         row(
             'Size',
             Row(children: [
               IconBtn(Icons.remove, tooltip: 'Smaller (−)', onTap: () => changeSize(-1)),
               SizedBox(width: 44, child: Text('${s.size.round()}', style: ts(w: FontWeight.w600, tab: true), textAlign: TextAlign.center)),
               IconBtn(Icons.add, tooltip: 'Bigger (+)', onTap: () => changeSize(1)),
-            ])),
+            ]),
+            changed: s.size != d.size,
+            reset: () => set(() => s.size = d.size)),
         row(
             'Line spacing',
             Slider(
@@ -928,7 +982,9 @@ class ReaderPageState extends State<ReaderPage> {
               divisions: 14,
               onChanged: (v) => setState(() => s.spacing = v),
               onChangeEnd: (_) => _styleChanged(),
-            )),
+            ),
+            changed: s.spacing != d.spacing,
+            reset: () => set(() => s.spacing = d.spacing)),
         row(
             'Margins',
             Slider(
@@ -938,32 +994,85 @@ class ReaderPageState extends State<ReaderPage> {
               divisions: 16,
               onChanged: (v) => setState(() => s.margin = v),
               onChangeEnd: (_) => _styleChanged(),
-            )),
-        row('Justify', sw(s.justify, (v) {
-          s.justify = v;
-          _styleChanged();
-        })),
-        row('Book\'s styles', sw(s.publisherStyles, (v) {
-          s.publisherStyles = v;
-          _styleChanged();
-        })),
+            ),
+            changed: s.margin != d.margin,
+            reset: () => set(() => s.margin = d.margin)),
+        row('Justify', sw(s.justify, (v) => set(() => s.justify = v)),
+            changed: s.justify != d.justify, reset: () => set(() => s.justify = d.justify)),
+        row('Book\'s styles', sw(s.publisherStyles, (v) => set(() => s.publisherStyles = v)),
+            changed: s.publisherStyles != d.publisherStyles, reset: () => set(() => s.publisherStyles = d.publisherStyles)),
         row(
             'Turning',
             Seg<PageFlow>(
               value: s.flow,
               items: const [(PageFlow.paged, 'Pages'), (PageFlow.scrolled, 'Scroll')],
-              onChanged: (v) {
-                s.flow = v;
-                _styleChanged();
-              },
-            )),
-        row('Animation', sw(s.animate, (v) {
-          s.animate = v;
-          _styleChanged();
-        })),
+              onChanged: (v) => set(() => s.flow = v),
+            ),
+            changed: s.flow != d.flow,
+            reset: () => set(() => s.flow = d.flow)),
+        if (s.flow == PageFlow.scrolled)
+          row(
+              'Scroll distance',
+              Slider(
+                value: s.scrollStep,
+                min: 40,
+                max: 600,
+                divisions: 28,
+                label: '${s.scrollStep.round()} px a notch',
+                onChanged: (v) => setState(() => s.scrollStep = v),
+                onChangeEnd: (_) => _styleChanged(),
+              ),
+              changed: s.scrollStep != d.scrollStep,
+              reset: () => set(() => s.scrollStep = d.scrollStep)),
+        row('Animation', sw(s.animate, (v) => set(() => s.animate = v)),
+            changed: s.animate != d.animate, reset: () => set(() => s.animate = d.animate)),
       ],
+      row(
+          'Controls size',
+          Slider(
+            value: Look.I.readerScale,
+            min: 0.8,
+            max: 2.0,
+            divisions: 24,
+            label: '${(Look.I.readerScale * 100).round()}%',
+            onChanged: (v) => setState(() => Look.I.readerScale = v),
+            onChangeEnd: (_) => Look.I.save(),
+          ),
+          changed: Look.I.readerScale != Look.defaultReaderScale,
+          reset: () {
+            Look.I.readerScale = Look.defaultReaderScale;
+            Look.I.save();
+            setState(() {});
+          }),
+      row(
+          'Mouse ◀ ▶',
+          Seg<String>(
+            value: Settings.I.mouseInReader,
+            items: const [('pages', 'Turn pages'), ('leave', 'Back leaves')],
+            onChanged: (v) {
+              Settings.I.mouseInReader = v;
+              Settings.I.save();
+              setState(() {});
+            },
+          ),
+          changed: Settings.I.mouseInReader != 'pages',
+          reset: () {
+            Settings.I.mouseInReader = 'pages';
+            Settings.I.save();
+            setState(() {});
+          }),
       const SizedBox(height: 8),
-      Text('These apply to every book.', style: ts(size: 11.5, c: tk.faint)),
+      Row(children: [
+        Expanded(child: Text('These apply to every book.', style: ts(size: 11.5, c: tk.faint))),
+        Btn.ghost('Reset all', icon: Icons.restart_alt, dense: true, onTap: () {
+          s.apply(ReadingStyle().toJson());
+          Settings.I.pdfDarkPages = false;
+          Settings.I.mouseInReader = 'pages';
+          Look.I.readerScale = Look.defaultReaderScale;
+          Look.I.save();
+          _styleChanged();
+        }),
+      ]),
     ]);
   }
 

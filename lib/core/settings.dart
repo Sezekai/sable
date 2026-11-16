@@ -45,6 +45,9 @@ class ReadingStyle {
   PageFlow flow = PageFlow.paged;
   bool animate = true;
 
+  /// Scroll mode: how far one notch of the mouse wheel moves (px).
+  double scrollStep = 140;
+
   Map<String, dynamic> toJson() => {
         'font': font,
         'size': size,
@@ -55,6 +58,7 @@ class ReadingStyle {
         'layout': layout.name,
         'flow': flow.name,
         'animate': animate,
+        'scrollStep': scrollStep,
       };
 
   void apply(Map m) {
@@ -68,6 +72,7 @@ class ReadingStyle {
     layout = PageLayout.values.firstWhere((e) => e.name == m['layout'], orElse: () => layout);
     flow = PageFlow.values.firstWhere((e) => e.name == m['flow'], orElse: () => flow);
     animate = m['animate'] as bool? ?? animate;
+    scrollStep = ((m['scrollStep'] as num?)?.toDouble() ?? scrollStep).clamp(40, 600);
   }
 }
 
@@ -86,6 +91,9 @@ class Settings extends ChangeNotifier {
   Settings._();
   static final Settings I = Settings._();
 
+  /// A copy with every setting at its default, to compare with and reset to.
+  static final Settings defaults = Settings._();
+
   List<LibFolder> folders = defaultFolders();
   bool showCollections = true;
   final ReadingStyle style = ReadingStyle();
@@ -94,6 +102,12 @@ class Settings extends ChangeNotifier {
   bool progressLine = true;
   bool skipRead = false;
   bool pdfDarkPages = false;
+
+  /// What the mouse's back and forward buttons do in the reader: 'pages' or 'leave'.
+  String mouseInReader = 'pages';
+
+  /// Passwords tried on locked ZIPs (as well as any "password" .txt file in a library folder).
+  List<String> zipPasswords = [];
 
   // Library view
   String gridStyle = 'comfortable'; // comfortable | compact | cover
@@ -120,6 +134,8 @@ class Settings extends ChangeNotifier {
       progressLine = m['progressLine'] as bool? ?? true;
       skipRead = m['skipRead'] as bool? ?? false;
       pdfDarkPages = m['pdfDarkPages'] as bool? ?? false;
+      mouseInReader = m['mouseInReader'] == 'leave' ? 'leave' : 'pages';
+      zipPasswords = ((m['zipPasswords'] as List?) ?? []).whereType<String>().toList();
       gridStyle = m['gridStyle'] as String? ?? gridStyle;
       tileSize = ((m['tileSize'] as num?)?.toDouble() ?? tileSize).clamp(110, 300);
       listView = m['listView'] as bool? ?? false;
@@ -141,6 +157,8 @@ class Settings extends ChangeNotifier {
         'progressLine': progressLine,
         'skipRead': skipRead,
         'pdfDarkPages': pdfDarkPages,
+        'mouseInReader': mouseInReader,
+        'zipPasswords': zipPasswords,
         'gridStyle': gridStyle,
         'tileSize': tileSize,
         'listView': listView,
@@ -178,6 +196,8 @@ class Settings extends ChangeNotifier {
     watchFolders = true;
     progressLine = true;
     skipRead = false;
+    pdfDarkPages = false;
+    mouseInReader = 'pages';
     gridStyle = 'comfortable';
     tileSize = 168;
     listView = false;

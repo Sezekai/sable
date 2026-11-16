@@ -155,20 +155,22 @@ class LibraryPageState extends State<LibraryPage> {
         f.tags.length +
         f.excludeTags.length;
     final hasCollections = Library.I.books.any((b) => b.collection && !b.missing);
+    final gap = SizedBox(width: 8);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Row(children: [
-        Text('Library', style: ts(size: 18, w: FontWeight.w700)),
-        const SizedBox(width: 10),
-        Text('${_entries.length}', style: ts(c: tk.faint, tab: true)),
-        const SizedBox(width: 16),
-        Expanded(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+      child: SizedBox(
+        height: lk.hControl + 4,
+        child: Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+          Text('Library', style: ts(size: 18, w: FontWeight.w700)),
+          const SizedBox(width: 8),
+          Text('${_entries.length}', style: ts(c: tk.faint, tab: true)),
+          const SizedBox(width: 16),
+          // The search box takes all the room that's left.
+          Expanded(
             child: Field(
               controller: search,
               focusNode: Nav.I.searchFocus,
-              hint: 'Search titles, series, authors, tags  ( / )',
+              hint: 'Search titles, series, authors and tags  ( / )',
               icon: Icons.search,
               onChanged: (v) {
                 Library.I.filter.search = v;
@@ -176,74 +178,81 @@ class LibraryPageState extends State<LibraryPage> {
               },
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Btn(nFilters == 0 ? 'Filters' : 'Filters · $nFilters',
-            icon: Icons.filter_list,
-            onTap: () => showDialog(context: context, barrierColor: Colors.black38, builder: (_) => const FiltersPanel())),
-        const SizedBox(width: 6),
-        Drop<String>(
-          value: s.sort,
-          items: [for (final e in sortKeys.entries) (e.key, e.value)],
-          onChanged: (v) {
-            s.sort = v;
-            if (v == 'random') Library.I.reshuffle();
+          gap,
+          Btn(nFilters == 0 ? 'Filters' : 'Filters · $nFilters',
+              icon: Icons.filter_list,
+              onTap: () => showDialog(context: context, barrierColor: Colors.black38, builder: (_) => const FiltersPanel())),
+          gap,
+          Drop<String>(
+            value: s.sort,
+            width: 170,
+            items: [for (final e in sortKeys.entries) (e.key, e.value)],
+            onChanged: (v) {
+              s.sort = v;
+              if (v == 'random') Library.I.reshuffle();
+              s.save();
+            },
+          ),
+          const SizedBox(width: 2),
+          IconBtn(s.sortDesc ? Icons.arrow_downward : Icons.arrow_upward,
+              tooltip: s.sortDesc ? 'Newest / highest first. Click to reverse.' : 'Oldest / lowest first. Click to reverse.',
+              onTap: () {
+            s.sortDesc = !s.sortDesc;
             s.save();
-          },
-        ),
-        IconBtn(s.sortDesc ? Icons.arrow_downward : Icons.arrow_upward,
-            tooltip: s.sortDesc ? 'Newest / highest first. Click to reverse.' : 'Oldest / lowest first. Click to reverse.',
-            onTap: () {
-          s.sortDesc = !s.sortDesc;
-          s.save();
-        }),
-        const Spacer(),
-        if (hasCollections)
-          Tooltip(
-            message: 'Show or hide the books from your downloaded collections',
-            child: Pill(s.showCollections ? 'Collections shown' : 'Collections hidden',
-                active: s.showCollections, onTap: () {
+          }),
+          if (hasCollections) ...[
+            gap,
+            Btn(s.showCollections ? 'Collections shown' : 'Collections hidden',
+                icon: s.showCollections ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                tooltip: 'Show or hide the books from your downloaded collections', onTap: () {
               s.showCollections = !s.showCollections;
               s.save();
               Library.I.changed();
             }),
-          ),
-        const SizedBox(width: 6),
-        IconBtn(Icons.casino_outlined, tooltip: 'Random book from what\'s shown (R)', onTap: _random),
-        PopupMenuButton<String>(
-          tooltip: 'View',
-          onSelected: (v) {
-            if (v == 'list') {
-              s.listView = !s.listView;
-            } else if (v == 'continue') {
-              s.showContinue = !s.showContinue;
-            } else {
-              s.gridStyle = v;
-              s.listView = false;
-            }
-            s.save();
-          },
-          itemBuilder: (_) => [
-            for (final (k, l) in [('comfortable', 'Comfortable grid'), ('compact', 'Compact grid'), ('cover', 'Covers only')])
-              PopupMenuItem(value: k, child: Text(l, style: ts(c: !s.listView && s.gridStyle == k ? lk.acc : tk.text))),
-            PopupMenuItem(value: 'list', child: Text('List', style: ts(c: s.listView ? lk.acc : tk.text))),
-            const PopupMenuDivider(),
-            PopupMenuItem(value: 'continue', child: Text('${s.showContinue ? 'Hide' : 'Show'} "Continue reading"', style: ts())),
           ],
-          child: const IgnorePointer(child: IconBtn(Icons.grid_view_outlined, onTap: noop)),
-        ),
-        SizedBox(
-          width: 110,
-          child: Slider(
-            value: s.tileSize,
-            min: 110,
-            max: 300,
-            onChanged: (v) => setState(() => s.tileSize = v),
-            onChangeEnd: (_) => s.save(),
+          gap,
+          Container(width: 1, height: lk.hControl - 6, color: tk.line),
+          gap,
+          IconBtn(Icons.casino_outlined, tooltip: 'Random book from what\'s shown (R)', onTap: _random),
+          PopupMenuButton<String>(
+            tooltip: 'View',
+            padding: EdgeInsets.zero,
+            onSelected: (v) {
+              if (v == 'list') {
+                s.listView = !s.listView;
+              } else if (v == 'continue') {
+                s.showContinue = !s.showContinue;
+              } else {
+                s.gridStyle = v;
+                s.listView = false;
+              }
+              s.save();
+            },
+            itemBuilder: (_) => [
+              for (final (k, l) in [('comfortable', 'Comfortable grid'), ('compact', 'Compact grid'), ('cover', 'Covers only')])
+                PopupMenuItem(value: k, child: Text(l, style: ts(c: !s.listView && s.gridStyle == k ? lk.acc : tk.text))),
+              PopupMenuItem(value: 'list', child: Text('List', style: ts(c: s.listView ? lk.acc : tk.text))),
+              const PopupMenuDivider(),
+              PopupMenuItem(value: 'continue', child: Text('${s.showContinue ? 'Hide' : 'Show'} "Continue reading"', style: ts())),
+            ],
+            child: const IgnorePointer(child: IconBtn(Icons.grid_view_outlined, onTap: noop)),
           ),
-        ),
-        IconBtn(Icons.refresh, tooltip: Jobs.I.isQueued(Library.scanName) ? 'Scanning…' : 'Scan the library for new books', onTap: Library.I.scan),
-      ]),
+          Tooltip(
+            message: 'Cover size (+ −, Ctrl+wheel)',
+            child: SizedBox(
+              width: 120,
+              child: Slider(
+                value: s.tileSize,
+                min: 110,
+                max: 300,
+                onChanged: (v) => setState(() => s.tileSize = v),
+                onChangeEnd: (_) => s.save(),
+              ),
+            ),
+          ),
+          IconBtn(Icons.refresh, tooltip: Jobs.I.isQueued(Library.scanName) ? 'Scanning…' : 'Scan the library for new books', onTap: Library.I.scan),
+        ]),
+      ),
     );
   }
 

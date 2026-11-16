@@ -20,6 +20,8 @@ void main() {
       ('Even If This Love Disappears Tonight', 'Even If This Love Disappears Tonight vol 1.epub', 'Even If This Love Disappears Tonight', 1, ''),
       ('Tensei Shitara Slime Datta Ken WN', 'Tensei Shitara Slime Datta Ken - Volume 05 (WN Chapter 084-097) - Saint Demon Confrontation Arc.pdf', 'Tensei Shitara Slime Datta Ken', 5, 'Web Novel'),
       ('Der Werwolf - The Annals of Veight', 'Marchen der Werwolf - LN 04 Premium Ver.epub', 'Der Werwolf - The Annals of Veight', 4, ''),
+      ('Is It Wrong To Pick Up Girls in The Dungeon', 'Is It Wrong to Try to Pick Up G - V10.epub', 'Is It Wrong To Pick Up Girls in The Dungeon', 10, ''),
+      ('Is It Wrong To Pick Up Girls in The Dungeon', 'Is It Wrong to Try to Pick Up G -V2.epub', 'Is It Wrong To Pick Up Girls in The Dungeon', 2, ''),
     ];
     for (final c in cases) {
       final r = ln(c.$1, c.$2);

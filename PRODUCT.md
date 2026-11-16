@@ -26,6 +26,7 @@ The collection, as found in November 2026:
 ## Decisions for this app (STANDARDS.md "App chooses" and "When relevant")
 
 - **Toolkit:** Flutter, like Shiori, so the Android app shares the code.
+- **Book engine changes:** `assets/reader/paginator.js` (from foliate-js) has one change, marked "Sable": no scrollbar in scroll mode.
 - **Book engine:** EPUB and MOBI/AZW3 are laid out by foliate-js inside WebView2 (Windows) or the system web view (Android), loaded from a server on `127.0.0.1` only. PDFs are drawn natively with pdfrx (PDFium).
 - **Positions:** EPUB CFI plus a percentage, not page numbers, because pages differ between a PC spread and a phone. Stats count "pages" of 1,500 letters, the same unit the book engine uses, so numbers match across devices.
 - **One library:** Book / Light novel is a field set per folder (and editable per book), not a section.
@@ -37,7 +38,7 @@ The collection, as found in November 2026:
 
 ## Differences from the standards, with reasons
 
-- **Appearance:** only two themes (OLED black and Starlight) and a set of gradient accents, in Settings → Look. The full Appearance screen from DESIGN.md isn't built; the owner wanted it simple.
+- **Appearance:** two themes (OLED black and Starlight), each editable colour by colour with its own accent (preset or custom), saved over the theme with a reset per colour and per theme, plus App size and Reader controls size. This is in Settings → Look; the full Appearance screen from DESIGN.md isn't built.
 - **Fonts:** Inter and JetBrains Mono for the app; Literata and Inter for reading (plus Georgia, Palatino and the book's own).
 - **Files on disk:** the Recycle Bin, move log and undo rules don't apply, because Sable moves and deletes none of the owner's files.
 - **Sensitive content:** no NSFW filters; the owner didn't ask for them.

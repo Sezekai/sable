@@ -11,7 +11,7 @@ const $ = s => document.querySelector(s)
 const post = (type, data = {}) =>
     fetch(`${base}/event/${token}`, { method: 'POST', body: JSON.stringify({ type, ...data }) }).catch(() => {})
 
-window.addEventListener('error', e => post('error', { message: `${e.message} (${e.filename}:${e.lineno})` }))
+window.addEventListener('error', e => { if (!String(e.message).includes('ResizeObserver')) post('error', { message: `${e.message} (${e.filename}:${e.lineno})` }) })
 window.addEventListener('unhandledrejection', e => post('error', { message: String(e.reason?.stack ?? e.reason) }))
 
 let view, style = {}, theme = {}, lastDetail = null, pageNo = 0
@@ -53,6 +53,14 @@ p { margin-top: 0 !important; margin-bottom: ${(style.spacing - 1) * 0.9 + 0.35}
 [align="center"], .center, .centered { text-align: center !important; }
 h1, h2, h3, h4 { line-height: 1.3 !important; text-align: center; }`}
 img, svg, image { cursor: zoom-in; }
+img.sable-fit {
+    display: block !important;
+    height: var(--sable-page-h) !important; width: auto !important;
+    max-height: var(--sable-page-h) !important; max-width: 100% !important;
+    object-fit: contain !important; margin: 0 auto !important; padding: 0 !important;
+    break-inside: avoid; page-break-inside: avoid;
+}
+.sable-fit-holder { text-indent: 0 !important; margin: 0 !important; padding: 0 !important; line-height: 0 !important; text-align: center !important; }
 pre { white-space: pre-wrap !important; }
 aside[epub|type~="footnote"], aside[epub|type~="endnote"], aside[epub|type~="note"], aside[epub|type~="rearnote"] { display: none; }
 ::selection { background: ${theme.accent}55; }
@@ -76,7 +84,8 @@ const columns = () => {
 const applyLayout = () => {
     if (!view?.renderer) return
     const r = view.renderer
-    const cols = columns()
+    // Scrolling is one column down the middle of the window.
+    const cols = style.flow === 'scrolled' ? 1 : columns()
     const w = window.innerWidth
     r.setAttribute('flow', style.flow === 'scrolled' ? 'scrolled' : 'paginated')
     r.setAttribute('max-column-count', String(cols))
@@ -89,6 +98,7 @@ const applyLayout = () => {
 }
 
 const applyStyle = () => {
+    refitImages()
     applyLayout()
     view?.renderer?.setStyles?.(bookCSS())
 }
@@ -104,8 +114,8 @@ const onDocClick = e => {
     if (sel && !sel.isCollapsed) return
     if (e.target?.closest?.('img, svg, image')) {
         const img = e.target.closest('img') ?? e.target.closest('image')
-        const src = img?.src ?? img?.getAttribute?.('href') ?? img?.getAttributeNS?.('http://www.w3.org/1999/xlink', 'href')
-        if (src) { openLightbox(src); return }
+        const src = pictureSrc(img)
+        if (src) { openLightbox(src, img); return }
     }
     const frame = doc?.defaultView?.frameElement
     const left = frame ? frame.getBoundingClientRect().left : 0
@@ -120,17 +130,20 @@ const zone = x => {
     post('activity')
 }
 
-const pageKeys = new Set(['ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', ' ', 'Home', 'End'])
+const pageKeys = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', ' ', 'Home', 'End'])
 
 const onKey = e => {
     if ($('#lightbox').classList.contains('show')) {
         if (e.key === 'Escape') closeLightbox()
+        else if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') stepPicture(1)
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') stepPicture(-1)
         e.preventDefault()
         return
     }
     const tag = e.target?.tagName
     if (tag === 'INPUT' || tag === 'TEXTAREA') return
-    if (e.key === 'ArrowLeft') view.goLeft()
+    if (style.flow === 'scrolled' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) smoothScroll(e.key === 'ArrowDown' ? 100 : -100)
+    else if (e.key === 'ArrowLeft') view.goLeft()
     else if (e.key === 'ArrowRight') view.goRight()
     else if (e.key === 'PageUp') view.prev()
     else if (e.key === 'PageDown' || e.key === ' ') view.next()
@@ -140,16 +153,83 @@ const onKey = e => {
     post('key', { key: e.key, ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey })
 }
 
-let wheelLock = 0
+// The mouse wheel: in page mode, one page per notch (small trackpad moves add up
+// first); in scroll mode, a smooth eased scroll of a set distance per notch.
+let wheelAcc = 0, wheelLock = 0
+let scrollTarget = 0, scrollAnim = 0
 const onWheel = e => {
-    if (style.flow === 'scrolled' || $('#lightbox').classList.contains('show')) return
-    if (e.ctrlKey) return
-    const now = Date.now()
-    if (now - wheelLock < 250) return
-    wheelLock = now
-    if (e.deltaY > 0 || e.deltaX > 0) view.next()
-    else view.prev()
+    if ($('#lightbox').classList.contains('show') || e.ctrlKey) return
+    const dy = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaMode === 2 ? e.deltaY * window.innerHeight : e.deltaY
+    const dx = e.deltaMode === 1 ? e.deltaX * 40 : e.deltaX
+    const d = Math.abs(dy) >= Math.abs(dx) ? dy : dx
+    if (!d) return
+    e.preventDefault()
     post('activity')
+    if (style.flow === 'scrolled') return smoothScroll(d)
+    const now = Date.now()
+    if (now < wheelLock) return
+    wheelAcc += d
+    if (Math.abs(wheelAcc) >= 50) {
+        wheelAcc > 0 ? view.next() : view.prev()
+        wheelAcc = 0
+        wheelLock = now + 280
+    }
+}
+
+const smoothScroll = d => {
+    const r = view?.renderer
+    if (!r) return
+    // A notch (about 100) moves the chosen distance; trackpads move in proportion.
+    scrollTarget += d * (style.scrollStep ?? 140) / 100
+    if (scrollAnim) return
+    let last = 0
+    const tick = now => {
+        const dt = last ? Math.max(4, Math.min(48, now - last)) : 16
+        last = now
+        if (Math.abs(scrollTarget) < 0.5) { scrollAnim = 0; scrollTarget = 0; return }
+        const move = scrollTarget * Math.min(1, dt / 90)
+        const down = move > 0
+        // At the top or bottom of this part of the book: go on to the next or previous one.
+        if (down ? r.viewSize - r.end <= 2 : r.start <= 0) {
+            scrollTarget = 0
+            scrollAnim = 0
+            down ? view.next() : view.prev()
+            return
+        }
+        r.scrollBy(move, move)
+        scrollTarget -= move
+        scrollAnim = requestAnimationFrame(tick)
+    }
+    scrollAnim = requestAnimationFrame(tick)
+}
+
+// Mouse back and forward buttons: the app decides what they do.
+const onMouseButton = e => {
+    if (e.button !== 3 && e.button !== 4) return
+    e.preventDefault()
+    if ($('#lightbox').classList.contains('show')) { stepPicture(e.button === 4 ? 1 : -1); return }
+    post('mouse', { button: e.button === 3 ? 'back' : 'forward' })
+}
+
+// Pictures: big ones (illustrations) fill the page: the window in one-page view,
+// half of it in two-page view. Small ones (icons, gaiji) stay as they are.
+const pageHeight = () => Math.max(200, window.innerHeight - (style.flow === 'scrolled' ? 24 : 88))
+const fitImages = doc => {
+    doc.documentElement.style.setProperty('--sable-page-h', `${pageHeight()}px`)
+    const mark = img => {
+        const big = img.naturalWidth >= 400 || img.naturalHeight >= 400
+        if (!big) return
+        img.classList.add('sable-fit')
+        const p = img.parentElement
+        if (p && p !== doc.body && p.textContent.trim() === '') p.classList.add('sable-fit-holder')
+    }
+    for (const img of doc.querySelectorAll('img')) {
+        if (img.complete) mark(img)
+        else img.addEventListener('load', () => mark(img), { once: true })
+    }
+}
+const refitImages = () => {
+    for (const c of view?.renderer?.getContents?.() ?? []) c.doc?.documentElement.style.setProperty('--sable-page-h', `${pageHeight()}px`)
 }
 
 const goChapterEdge = end => {
@@ -163,19 +243,34 @@ const goChapterEdge = end => {
 // ---------- pictures ----------
 
 let lb = { scale: 1, x: 0, y: 0, drag: null }
+let pictures = [], pictureAt = -1, stepping = false
 const lbImg = () => $('#lightbox img')
 const lbApply = () => {
     const im = lbImg()
     im.style.transform = `translate(${lb.x}px, ${lb.y}px) scale(${lb.scale})`
 }
-const openLightbox = src => {
+const pictureSrc = el => el?.src || el?.getAttribute?.('href') || el?.getAttributeNS?.('http://www.w3.org/1999/xlink', 'href') || ''
+const isBigPicture = el => el.tagName.toLowerCase() === 'image' || el.naturalWidth >= 200 || el.naturalHeight >= 200
+const picturesInView = () => {
+    const out = []
+    for (const c of view?.renderer?.getContents?.() ?? [])
+        for (const el of c.doc?.querySelectorAll('img, image') ?? [])
+            if (isBigPicture(el) && pictureSrc(el)) out.push({ el, index: c.index })
+    return out
+}
+const showPicture = src => {
     const im = lbImg()
     im.onload = () => {
-        const fit = Math.min(window.innerWidth * 0.96 / im.naturalWidth, window.innerHeight * 0.96 / im.naturalHeight, 1.5)
+        const fit = Math.min(window.innerWidth * 0.96 / im.naturalWidth, window.innerHeight * 0.96 / im.naturalHeight)
         lb = { scale: fit, x: -im.naturalWidth * fit / 2, y: -im.naturalHeight * fit / 2, drag: null }
         lbApply()
     }
     im.src = src
+}
+const openLightbox = (src, el) => {
+    pictures = picturesInView()
+    pictureAt = Math.max(0, pictures.findIndex(p => p.el === el))
+    showPicture(src)
     $('#lightbox').classList.add('show')
     post('lightbox', { open: true })
 }
@@ -183,9 +278,46 @@ const closeLightbox = () => {
     $('#lightbox').classList.remove('show')
     post('lightbox', { open: false })
 }
-$('#lightbox').addEventListener('click', e => { if (e.target.id === 'lightbox') closeLightbox() })
+
+// The next or previous picture. Past the ones in this part of the book, the book
+// moves on to the next part that has a picture, so the page follows along.
+const stepPicture = async dir => {
+    if (stepping) return
+    pictures = picturesInView()
+    const next = pictureAt + dir
+    if (next >= 0 && next < pictures.length) {
+        pictureAt = next
+        showPicture(pictureSrc(pictures[next].el))
+        return
+    }
+    const sections = view.book.sections
+    const here = view.renderer.getContents()?.[0]?.index ?? 0
+    stepping = true
+    try {
+        for (let i = here + dir; i >= 0 && i < sections.length; i += dir) {
+            const s = sections[i]
+            if (s.linear === 'no' || !s.createDocument) continue
+            let doc
+            try { doc = await s.createDocument() } catch { continue }
+            if (!doc?.querySelector('img, image')) continue
+            await view.goTo(i)
+            for (let t = 0; t < 20; t++) {
+                await new Promise(r => setTimeout(r, 100))
+                pictures = picturesInView()
+                if (pictures.length && pictures.every(p => p.el.tagName.toLowerCase() === 'image' || p.el.complete)) break
+            }
+            if (!pictures.length) continue
+            pictureAt = dir > 0 ? 0 : pictures.length - 1
+            showPicture(pictureSrc(pictures[pictureAt].el))
+            return
+        }
+    } finally { stepping = false }
+}
+
+$('#lightbox').addEventListener('click', e => { if (e.target.id === 'lightbox' || e.target.classList.contains('hint')) closeLightbox() })
 $('#lightbox').addEventListener('wheel', e => {
     e.preventDefault()
+    e.stopPropagation()
     const f = e.deltaY < 0 ? 1.15 : 1 / 1.15
     const cx = e.clientX - window.innerWidth / 2, cy = e.clientY - window.innerHeight / 2
     lb.x = cx - (cx - lb.x) * f
@@ -193,7 +325,7 @@ $('#lightbox').addEventListener('wheel', e => {
     lb.scale *= f
     lbApply()
 }, { passive: false })
-lbImg().addEventListener('mousedown', e => { e.preventDefault(); lb.drag = { x: e.clientX - lb.x, y: e.clientY - lb.y, moved: false } })
+lbImg().addEventListener('mousedown', e => { if (e.button !== 0) return; e.preventDefault(); lb.drag = { x: e.clientX - lb.x, y: e.clientY - lb.y, moved: false } })
 window.addEventListener('mousemove', e => {
     if (!lb.drag) return
     lb.drag.moved = true
@@ -202,7 +334,7 @@ window.addEventListener('mousemove', e => {
     lbApply()
 })
 window.addEventListener('mouseup', () => { setTimeout(() => lb.drag = null, 0) })
-lbImg().addEventListener('click', e => { if (!lb.drag?.moved) closeLightbox(); e.stopPropagation() })
+lbImg().addEventListener('click', e => { e.stopPropagation() })
 
 // ---------- reporting where the reader is ----------
 
@@ -212,15 +344,25 @@ const onRelocate = ({ detail }) => {
     const r = view.renderer
     let page = 0, pages = 0
     if (r && typeof r.page === 'number') {
-        page = r.page
-        pages = Math.max(1, r.pages - 2)
+        if (r.scrolled) {
+            page = Math.min(r.pages, r.page + 1)
+            pages = Math.max(1, r.pages)
+        } else {
+            page = Math.max(1, r.page)
+            pages = Math.max(1, r.pages - 2)
+        }
+    }
+    let fraction = detail.fraction
+    if (!Number.isFinite(fraction)) {
+        const l = detail.location
+        fraction = l && l.total ? l.current / l.total : 0
     }
     pageNo = page
     const sig = `${detail.cfi}|${page}|${pages}`
     if (sig === lastSent) return
     lastSent = sig
     post('relocate', {
-        fraction: detail.fraction ?? 0,
+        fraction,
         cfi: detail.cfi ?? '',
         location: detail.location ?? null,
         time: detail.time ?? null,
@@ -228,14 +370,17 @@ const onRelocate = ({ detail }) => {
         chapterHref: detail.tocItem?.href ?? '',
         page, pages,
         // The end of the book: the end of the last section (or nearly all the way through).
-        atEnd: !!r?.atEnd && ((detail.section && detail.section.current >= detail.section.total - 1) || (detail.fraction ?? 0) >= 0.985),
+        atEnd: !!r?.atEnd && ((detail.section && detail.section.current >= detail.section.total - 1) || fraction >= 0.985),
     })
 }
 
 const onLoad = ({ detail: { doc } }) => {
     doc.addEventListener('click', onDocClick)
     doc.addEventListener('keydown', onKey)
-    doc.addEventListener('wheel', onWheel, { passive: true })
+    doc.addEventListener('wheel', onWheel, { passive: false })
+    doc.addEventListener('mouseup', onMouseButton)
+    doc.addEventListener('auxclick', e => { if (e.button === 3 || e.button === 4) e.preventDefault() })
+    fitImages(doc)
 }
 
 const flattenToc = (items, level = 0, out = []) => {
@@ -284,9 +429,11 @@ window.sable = {
 }
 
 window.addEventListener('keydown', onKey)
-window.addEventListener('wheel', onWheel, { passive: true })
+window.addEventListener('wheel', onWheel, { passive: false })
+window.addEventListener('mouseup', e => onMouseButton(e))
+window.addEventListener('auxclick', e => { if (e.button === 3 || e.button === 4) e.preventDefault() })
 let resizeTimer
-window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(applyLayout, 120) })
+window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { refitImages(); applyLayout() }, 120) })
 
 // ---------- start ----------
 

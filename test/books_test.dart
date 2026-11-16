@@ -39,10 +39,31 @@ void main() {
     expect(outerPath(info.path), zip.path);
   });
 
+  test('locked ZIPs open with a password from a password file', () {
+    final arc = Archive()..addFile(ArchiveFile.bytes('Locked - LN 01.epub', makeSampleEpub(title: 'Locked', author: 'L')));
+    final zip = p.join(dir.path, 'Locked - LN 01.zip');
+    File(zip).writeAsBytesSync(ZipEncoder(password: 'sesame-123').encodeBytes(arc));
+    File(p.join(dir.path, 'Password for many rars.txt')).writeAsStringSync('Password: sesame-123');
+    final inner = '$zip${zipSep}Locked - LN 01.epub';
+    expect(inspectBook(inner).error, contains('password'));
+    final pws = passwordsFromFiles([dir.path]);
+    expect(pws, contains('sesame-123'));
+    final info = inspectBook(inner, passwords: pws);
+    expect(info.error, isNull);
+    expect(info.title, 'Locked');
+  });
+
   test('a broken file reports an error instead of throwing', () {
     final f = File(p.join(dir.path, 'bad.epub'))..writeAsStringSync('not a zip');
     final info = inspectBook(f.path);
     expect(info.error, isNotNull);
+  });
+
+  test('a damaged MOBI still gets added (details from its name)', () {
+    final f = File(p.join(dir.path, 'Broken.mobi'))..writeAsBytesSync(List.filled(200, 0));
+    final info = inspectBook(f.path);
+    expect(info.error, isNull);
+    expect(info.fingerprint, isNotEmpty);
   });
 
   test('sample PDF is well formed', () {

@@ -33,9 +33,9 @@ void showInFolder(Book b) {
 }
 
 Widget _crumbs(List<(String, VoidCallback?)> items) => Row(children: [
-      IconBtn(Icons.arrow_back, tooltip: 'Back (Esc)', onTap: () {
-        if (items.length > 2 && items[items.length - 2].$2 != null) {
-          items[items.length - 2].$2!();
+      IconBtn(Icons.arrow_back, tooltip: 'Back (Esc or the mouse\'s back button)', onTap: () {
+        if (Nav.I.canGoBack) {
+          Nav.I.back();
         } else {
           Nav.I.closeDetail();
         }
@@ -76,11 +76,7 @@ class BookPage extends StatelessWidget {
             child: _crumbs([
               ('Library', Nav.I.closeDetail),
               if (series != null)
-                (b.displaySeries ?? '', () {
-                  Nav.I.detail = b.seriesKey;
-                  Nav.I.detailIsSeries = true;
-                  Nav.I.changed();
-                }),
+                (b.displaySeries ?? '', () => Nav.I.openSeriesKey(b.seriesKey)),
               (series != null && b.volumeText.isNotEmpty ? b.volumeText : b.displayTitle, null),
             ]),
           ),

@@ -33,7 +33,67 @@ class Tokens {
     this.warn = const Color(0xFFF2B64C),
     this.danger = const Color(0xFFF0616D),
   });
+
+  Map<String, Color> toMap() => {
+        'ground': ground,
+        'rail': rail,
+        'panel': panel,
+        'raised': raised,
+        'raised2': raised2,
+        'field': field,
+        'line': line,
+        'line2': line2,
+        'text': text,
+        'sec': sec,
+        'faint': faint,
+        'pageBg': pageBg,
+        'pageFg': pageFg,
+        'pageMuted': pageMuted,
+      };
+
+  /// These colours with some replaced (the user's edits to a theme).
+  Tokens withOverrides(Map<String, String> o) {
+    if (o.isEmpty) return this;
+    Color c(String k, Color d) => o[k] == null ? d : hexColor(o[k]!);
+    return Tokens(
+      ground: c('ground', ground),
+      rail: c('rail', rail),
+      panel: c('panel', panel),
+      raised: c('raised', raised),
+      raised2: c('raised2', raised2),
+      field: c('field', field),
+      line: c('line', line),
+      line2: c('line2', line2),
+      text: c('text', text),
+      sec: c('sec', sec),
+      faint: c('faint', faint),
+      stage: c('ground', stage),
+      pageBg: c('pageBg', pageBg),
+      pageFg: c('pageFg', pageFg),
+      pageMuted: c('pageMuted', pageMuted),
+    );
+  }
 }
+
+/// The colours a theme has, in the order the editor lists them.
+const tokenLabels = <String, String>{
+  'ground': 'Background',
+  'rail': 'Sidebar',
+  'panel': 'Panels and bars',
+  'raised': 'Raised (buttons, chips)',
+  'raised2': 'Hover',
+  'field': 'Text boxes',
+  'line': 'Lines',
+  'line2': 'Strong lines',
+  'text': 'Text',
+  'sec': 'Secondary text',
+  'faint': 'Faint text',
+  'pageBg': 'Book page',
+  'pageFg': 'Book text',
+  'pageMuted': 'Book page details (status line)',
+};
+
+const defaultAccentFor = {'OLED black': 'Violet → Pink', 'Starlight': 'Silver → Violet'};
 
 Color hexColor(String h) {
   var s = h.replaceAll('#', '').trim();
@@ -99,21 +159,47 @@ class Look extends ChangeNotifier {
   static final Look I = Look._();
 
   String theme = 'OLED black';
-  String accentName = 'Violet → Pink';
+
+  /// Per theme: the accent preset, or 'Custom' with its own colours.
+  final Map<String, String> accents = {...defaultAccentFor};
+  final Map<String, List<String>> customAccents = {};
+
+  /// Per theme: colours the user changed (token -> #hex). Saved over the theme.
+  final Map<String, Map<String, String>> overrides = {};
+
+  /// How big the whole app is drawn (1 = 100%).
+  double appScale = 1.0;
+
+  /// How big the reader's bars, panels and status line are, on top of [appScale].
+  double readerScale = 1.25;
+  static const defaultAppScale = 1.0;
+  static const defaultReaderScale = 1.25;
+
+  String get accentName => accents[theme] ?? defaultAccentFor[theme] ?? 'Violet → Pink';
 
   // Fixed parts of the look, kept compact.
   final String font = 'Inter';
   final double fontSize = 13;
   final double rControl = 6;
   final double rPanel = 10;
-  final double hControl = 28;
+  final double hControl = 30;
   final double hRow = 24;
   final String buttons = 'flat';
   final double outlineWidth = 2;
 
-  Tokens get t => themes[theme] ?? themes['OLED black']!;
+  Tokens baseTokens(String name) => themes[name] ?? themes['OLED black']!;
+  Tokens get t => baseTokens(theme).withOverrides(overrides[theme] ?? const {});
   bool get starlight => theme == 'Starlight';
-  List<Color> get accent => accentPresets[accentName] ?? accentPresets['Violet → Pink']!;
+  List<Color> get accent {
+    if (accentName == 'Custom') {
+      final c = customAccents[theme];
+      if (c != null && c.isNotEmpty) return c.map(hexColor).toList();
+    }
+    return accentPresets[accentName] ?? accentPresets['Violet → Pink']!;
+  }
+
+  bool themeEdited(String name) =>
+      (overrides[name]?.isNotEmpty ?? false) || (accents[name] ?? defaultAccentFor[name]) != defaultAccentFor[name];
   Color get acc => accent.first;
   Color get outline => acc;
   Color get highlight => acc;
@@ -148,15 +234,46 @@ class Look extends ChangeNotifier {
       final m = jsonDecode(f.readAsStringSync()) as Map;
       final th = m['theme'] as String?;
       if (th != null && themes.containsKey(th)) theme = th;
+      // Version 1 had one accent for both themes.
       final a = m['accent'] as String?;
-      if (a != null && accentPresets.containsKey(a)) accentName = a;
+      if (a != null && accentPresets.containsKey(a)) accents[theme] = a;
+      final ac = m['accents'];
+      if (ac is Map) {
+        for (final e in ac.entries) {
+          if (themes.containsKey(e.key) && (accentPresets.containsKey(e.value) || e.value == 'Custom')) {
+            accents[e.key as String] = e.value as String;
+          }
+        }
+      }
+      final ca = m['customAccents'];
+      if (ca is Map) {
+        for (final e in ca.entries) {
+          if (e.value is List) customAccents[e.key as String] = (e.value as List).cast<String>();
+        }
+      }
+      final ov = m['overrides'];
+      if (ov is Map) {
+        for (final e in ov.entries) {
+          if (e.value is Map) overrides[e.key as String] = (e.value as Map).cast<String, String>();
+        }
+      }
+      appScale = ((m['appScale'] as num?)?.toDouble() ?? 1.0).clamp(0.8, 1.6);
+      readerScale = ((m['readerScale'] as num?)?.toDouble() ?? defaultReaderScale).clamp(0.8, 2.0);
     } catch (_) {}
   }
 
   void save() {
     try {
       writeStringSafelySync(AppPaths.I.appearanceFile,
-          const JsonEncoder.withIndent('  ').convert({'version': 1, 'theme': theme, 'accent': accentName}));
+          const JsonEncoder.withIndent('  ').convert({
+            'version': 2,
+            'theme': theme,
+            'accents': accents,
+            'customAccents': customAccents,
+            'overrides': overrides,
+            'appScale': appScale,
+            'readerScale': readerScale,
+          }));
     } catch (_) {}
     notifyListeners();
   }
@@ -167,13 +284,57 @@ class Look extends ChangeNotifier {
   }
 
   void setAccent(String name) {
-    accentName = name;
+    accents[theme] = name;
+    if (name == 'Custom' && (customAccents[theme]?.isEmpty ?? true)) {
+      customAccents[theme] = accent.map(colorHex).toList();
+    }
+    save();
+  }
+
+  void setCustomAccent(int i, Color c) {
+    final l = [...(customAccents[theme] ?? accent.map(colorHex).toList())];
+    while (l.length <= i) {
+      l.add(l.isEmpty ? '#9b6bff' : l.last);
+    }
+    l[i] = colorHex(c);
+    customAccents[theme] = l;
+    accents[theme] = 'Custom';
+    save();
+  }
+
+  void setToken(String key, Color c) {
+    final base = baseTokens(theme).toMap()[key];
+    final m = overrides.putIfAbsent(theme, () => {});
+    if (base != null && colorHex(base) == colorHex(c)) {
+      m.remove(key);
+    } else {
+      m[key] = colorHex(c);
+    }
+    save();
+  }
+
+  void resetToken(String key) {
+    overrides[theme]?.remove(key);
+    save();
+  }
+
+  /// Puts one theme back as it came: colours and accent.
+  void resetTheme(String name) {
+    overrides.remove(name);
+    customAccents.remove(name);
+    accents[name] = defaultAccentFor[name] ?? 'Violet → Pink';
     save();
   }
 
   void resetToDefault() {
     theme = 'OLED black';
-    accentName = 'Violet → Pink';
+    overrides.clear();
+    customAccents.clear();
+    accents
+      ..clear()
+      ..addAll(defaultAccentFor);
+    appScale = defaultAppScale;
+    readerScale = defaultReaderScale;
     save();
   }
 
@@ -278,4 +439,35 @@ class _StarPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _StarPainter oldDelegate) => oldDelegate.c != c;
+}
+
+/// Draws [child] bigger or smaller, as if the window were a different size.
+/// Text stays sharp because it's drawn at the final size.
+class UiScale extends StatelessWidget {
+  const UiScale({super.key, required this.scale, required this.child});
+  final double scale;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) {
+    if ((scale - 1).abs() < 0.001) return child;
+    return LayoutBuilder(builder: (context, box) {
+      final mq = MediaQuery.of(context);
+      final w = box.maxWidth / scale, h = box.maxHeight / scale;
+      return Transform.scale(
+        scale: scale,
+        alignment: Alignment.topLeft,
+        child: OverflowBox(
+          alignment: Alignment.topLeft,
+          minWidth: w,
+          maxWidth: w,
+          minHeight: h,
+          maxHeight: h,
+          child: MediaQuery(
+            data: mq.copyWith(size: Size(w, h), devicePixelRatio: mq.devicePixelRatio * scale),
+            child: child,
+          ),
+        ),
+      );
+    });
+  }
 }

@@ -81,20 +81,59 @@ List<(String, int)> zipBookEntries(String zipPath) {
   }
 }
 
-/// Reads the bytes of one book stored inside a ZIP.
-Uint8List? readZipEntry(String zipPath, String name) {
-  final input = InputFileStream(zipPath);
-  try {
-    final arc = ZipDecoder().decodeStream(input);
-    final f = arc.findFile(name);
-    return f?.readBytes();
-  } finally {
-    input.closeSync();
+/// Reads the bytes of one book stored inside a ZIP. Locked ZIPs are tried with
+/// each of [passwords] in turn.
+Uint8List? readZipEntry(String zipPath, String name, {List<String> passwords = const []}) {
+  Object? lastError;
+  for (final pw in <String?>[null, ...passwords]) {
+    final input = InputFileStream(zipPath);
+    try {
+      final arc = ZipDecoder().decodeStream(input, password: pw);
+      final f = arc.findFile(name);
+      return f?.readBytes();
+    } catch (e) {
+      if (!'$e'.toLowerCase().contains('password')) rethrow;
+      lastError = e;
+    } finally {
+      input.closeSync();
+    }
   }
+  throw passwords.isEmpty
+      ? 'the ZIP is locked with a password. Add it in Settings → Library → ZIP passwords.'
+      : 'the ZIP is locked and none of the saved passwords open it. Add its password in Settings → Library → ZIP passwords. ($lastError)';
+}
+
+/// Passwords written in .txt files with "password" in their name, in the top
+/// two levels of the library folders (such as "Password for many rars.txt").
+List<String> passwordsFromFiles(List<String> roots) {
+  final out = <String>{};
+  void scan(Directory d, int depth) {
+    try {
+      for (final e in d.listSync(followLinks: false)) {
+        final n = p.basename(e.path).toLowerCase();
+        if (e is File && n.endsWith('.txt') && n.contains('password') && e.lengthSync() < 64 * 1024) {
+          for (final raw in e.readAsLinesSync()) {
+            final line = raw.trim();
+            if (line.isEmpty) continue;
+            out.add(line);
+            final i = line.indexOf(':');
+            if (i > 0 && i < line.length - 1) out.add(line.substring(i + 1).trim());
+          }
+        } else if (e is Directory && depth < 1) {
+          scan(e, depth + 1);
+        }
+      }
+    } catch (_) {}
+  }
+
+  for (final r in roots) {
+    scan(Directory(r), 0);
+  }
+  return out.where((x) => x.isNotEmpty).toList();
 }
 
 /// Reads one book file (or a book inside a ZIP): fingerprint, details and cover.
-BookInfo inspectBook(String path, {bool withCover = true}) {
+BookInfo inspectBook(String path, {bool withCover = true, List<String> passwords = const []}) {
   final info = BookInfo(path);
   final name = isInZip(path) ? innerName(path) : path;
   info.format = formatOf(name);
@@ -103,7 +142,7 @@ BookInfo inspectBook(String path, {bool withCover = true}) {
     final st = outer.statSync();
     info.mtime = st.modified.millisecondsSinceEpoch ~/ 1000;
     if (isInZip(path)) {
-      final bytes = readZipEntry(outerPath(path), innerName(path));
+      final bytes = readZipEntry(outerPath(path), innerName(path), passwords: passwords);
       if (bytes == null) throw 'it isn\'t in the ZIP any more';
       info.size = bytes.length;
       info.fingerprint = fingerprintBytes(bytes);
@@ -129,7 +168,10 @@ void _readFrom(BookInfo info, {String? path, Uint8List? bytes, required bool wit
     case 'epub':
       _readEpub(info, path: path, bytes: bytes, withCover: withCover);
     case 'mobi' || 'azw3':
-      _readMobi(info, bytes ?? File(path!).readAsBytesSync(), withCover: withCover);
+      // Some MOBI files have odd headers; then the file name is used instead.
+      try {
+        _readMobi(info, bytes ?? File(path!).readAsBytesSync(), withCover: withCover);
+      } catch (_) {}
     case 'pdf':
       // Page count and cover come from the PDF engine on the main side.
       break;
@@ -273,9 +315,12 @@ void _readMobi(BookInfo info, Uint8List b, {required bool withCover}) {
   final bd = ByteData.sublistView(b);
   if (b.length < 78) throw 'too short';
   final n = bd.getUint16(76);
+  if (n == 0 || 78 + n * 8 > b.length) throw 'no records';
   List<int> offsets = [for (var i = 0; i < n; i++) bd.getUint32(78 + i * 8)];
+  if (offsets.any((o) => o > b.length)) throw 'bad record table';
   Uint8List record(int i) => b.sublist(offsets[i], i + 1 < n ? offsets[i + 1] : b.length);
   final r0 = record(0);
+  if (r0.length < 16) throw 'short header';
   final h = ByteData.sublistView(r0);
   info.textBytes = h.getUint32(4);
   if (r0.length < 132 || String.fromCharCodes(r0.sublist(16, 20)) != 'MOBI') {

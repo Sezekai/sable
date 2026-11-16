@@ -68,7 +68,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Settings.I,
+      listenable: Listenable.merge([Settings.I, Look.I, Library.I]),
       builder: (context, _) => Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -83,33 +83,8 @@ class _SettingsPageState extends State<SettingsPage> {
               _group('Library folders', 'Where your books are. Light novel folders treat each folder inside as a series. Collections can be hidden from the library in one click.', [
                 ..._folders(),
               ]),
-              _group('Look', 'The app and the reading page follow the theme.', [
-                _row('Theme', Seg<String>(
-                  value: Look.I.theme,
-                  items: const [('OLED black', 'OLED black'), ('Starlight', 'Starlight')],
-                  onChanged: (v) => setState(() => Look.I.setTheme(v)),
-                )),
-                _row('Accent', Wrap(spacing: 8, runSpacing: 8, children: [
-                  for (final e in accentPresets.entries)
-                    Tooltip(
-                      message: e.key,
-                      child: GestureDetector(
-                        onTap: () => setState(() => Look.I.setAccent(e.key)),
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: Container(
-                            width: 44,
-                            height: 22,
-                            decoration: BoxDecoration(
-                              gradient: LinearGradient(colors: e.value.length == 1 ? [e.value.first, e.value.first] : e.value),
-                              borderRadius: BorderRadius.circular(11),
-                              border: Border.all(color: Look.I.accentName == e.key ? tk.text : Colors.transparent, width: 2),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ])),
+              _group('Look', 'Each theme can be changed and keeps your changes. The book page follows the theme too.', [
+                ..._look(),
               ]),
               _group('Reader', 'Reading settings can also be changed while reading (the Aa button).', [
                 _row('Font', Drop<String>(
@@ -120,7 +95,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     Settings.I.style.font = v;
                     Settings.I.save();
                   },
-                )),
+                ), changed: Settings.I.style.font != _d.style.font, reset: () {
+                  Settings.I.style.font = _d.style.font;
+                  Settings.I.save();
+                }),
                 _row('Pages at once', Seg<PageLayout>(
                   value: Settings.I.style.layout,
                   items: const [(PageLayout.auto, 'Auto (two when the window is wide)'), (PageLayout.one, 'One'), (PageLayout.two, 'Two')],
@@ -128,9 +106,42 @@ class _SettingsPageState extends State<SettingsPage> {
                     Settings.I.style.layout = v;
                     Settings.I.save();
                   },
-                )),
-                _check('Skip volumes already read when moving to the next volume', Settings.I.skipRead, (v) => Settings.I.skipRead = v),
-                _check('Show PDFs with dark pages (inverts their colours)', Settings.I.pdfDarkPages, (v) => Settings.I.pdfDarkPages = v),
+                ), changed: Settings.I.style.layout != _d.style.layout, reset: () {
+                  Settings.I.style.layout = _d.style.layout;
+                  Settings.I.save();
+                }),
+                _row('Turning', Seg<PageFlow>(
+                  value: Settings.I.style.flow,
+                  items: const [(PageFlow.paged, 'Pages'), (PageFlow.scrolled, 'Scroll')],
+                  onChanged: (v) {
+                    Settings.I.style.flow = v;
+                    Settings.I.save();
+                  },
+                ), changed: Settings.I.style.flow != _d.style.flow, reset: () {
+                  Settings.I.style.flow = _d.style.flow;
+                  Settings.I.save();
+                }),
+                _row('Scroll distance', _slider(Settings.I.style.scrollStep, 40, 600, '${Settings.I.style.scrollStep.round()} px for each notch of the wheel', (v) {
+                  Settings.I.style.scrollStep = v;
+                }), changed: Settings.I.style.scrollStep != _d.style.scrollStep, reset: () {
+                  Settings.I.style.scrollStep = _d.style.scrollStep;
+                  Settings.I.save();
+                }),
+                _row('Mouse back / forward', Seg<String>(
+                  value: Settings.I.mouseInReader,
+                  items: const [('pages', 'Turn pages'), ('leave', 'Back leaves the book')],
+                  onChanged: (v) {
+                    Settings.I.mouseInReader = v;
+                    Settings.I.save();
+                  },
+                ), changed: Settings.I.mouseInReader != _d.mouseInReader, reset: () {
+                  Settings.I.mouseInReader = _d.mouseInReader;
+                  Settings.I.save();
+                }),
+                _check('Skip volumes already read when moving to the next volume', Settings.I.skipRead, (v) => Settings.I.skipRead = v,
+                    def: _d.skipRead),
+                _check('Show PDFs with dark pages (inverts their colours)', Settings.I.pdfDarkPages, (v) => Settings.I.pdfDarkPages = v,
+                    def: _d.pdfDarkPages),
                 _row('Idle after', Row(children: [
                   Drop<int>(
                     value: Settings.I.idleMinutes,
@@ -142,7 +153,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                   const SizedBox(width: 10),
                   Flexible(child: Text('Time with no page turns isn\'t counted as reading.', style: ts(c: tk.faint, size: 12))),
-                ])),
+                ]), changed: Settings.I.idleMinutes != _d.idleMinutes, reset: () {
+                  Settings.I.idleMinutes = _d.idleMinutes;
+                  Settings.I.save();
+                }),
                 const SizedBox(height: 4),
                 Text(
                     Platform.isWindows
@@ -151,15 +165,51 @@ class _SettingsPageState extends State<SettingsPage> {
                             : 'Book engine: Microsoft Edge WebView2 ${ReaderWeb.runtimeVersion}')
                         : '',
                     style: ts(c: ReaderWeb.checked && ReaderWeb.runtimeVersion == null ? tk.warn : tk.faint, size: 12)),
+                const SizedBox(height: 6),
+                Btn.ghost('Reset all reader settings', icon: Icons.restart_alt, onTap: () {
+                  Settings.I.style.apply(ReadingStyle().toJson());
+                  Settings.I.skipRead = _d.skipRead;
+                  Settings.I.pdfDarkPages = _d.pdfDarkPages;
+                  Settings.I.mouseInReader = _d.mouseInReader;
+                  Settings.I.idleMinutes = _d.idleMinutes;
+                  Settings.I.save();
+                  toast('Reader settings are back to their defaults');
+                }),
               ]),
               _group('Library', 'How the library behaves.', [
-                _check('Show a reading progress line on covers', Settings.I.progressLine, (v) => Settings.I.progressLine = v),
-                _check('Show "Continue reading" at the top of the library', Settings.I.showContinue, (v) => Settings.I.showContinue = v),
+                _check('Show a reading progress line on covers', Settings.I.progressLine, (v) => Settings.I.progressLine = v, def: _d.progressLine),
+                _check('Show "Continue reading" at the top of the library', Settings.I.showContinue, (v) => Settings.I.showContinue = v,
+                    def: _d.showContinue),
+                _check('Show books from collections', Settings.I.showCollections, (v) {
+                  Settings.I.showCollections = v;
+                  Library.I.changed();
+                }, def: _d.showCollections),
                 _check('Watch the folders and add new books by themselves', Settings.I.watchFolders, (v) {
                   Settings.I.watchFolders = v;
                   Library.I.startWatching();
-                }),
+                }, def: _d.watchFolders),
+                const SizedBox(height: 8),
+                Text('ZIP passwords', style: ts(w: FontWeight.w600)),
+                Text('Locked ZIPs are opened with these, and with any password in a .txt file with "password" in its name in a library folder '
+                    '(like "Password for many rars.txt"). The ZIPs themselves aren\'t changed.',
+                    style: ts(c: tk.sec, size: 12)),
                 const SizedBox(height: 6),
+                Wrap(spacing: 6, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                  for (final pw in Settings.I.zipPasswords)
+                    TagChip('•' * pw.length.clamp(4, 12), tk.sec, onRemove: () {
+                      Settings.I.zipPasswords.remove(pw);
+                      Settings.I.save();
+                    }),
+                  Btn('Add a password…', icon: Icons.key_outlined, dense: true, onTap: () async {
+                    final pw = await ask(context, 'Add a ZIP password', body: 'Sable tries it on locked ZIPs at the next scan, which starts now.', confirmLabel: 'Add');
+                    if (pw == null || pw.isEmpty) return;
+                    Settings.I.zipPasswords.add(pw);
+                    Settings.I.save();
+                    Library.I.scan();
+                  }),
+                  Text('${Library.I.zipPasswords.length} passwords in use', style: ts(c: tk.faint, size: 12)),
+                ]),
+                const SizedBox(height: 10),
                 Wrap(spacing: 8, runSpacing: 6, children: [
                   Btn('Scan the library', icon: Icons.refresh, onTap: Library.I.scan),
                   Btn('Read file names again', icon: Icons.text_fields, tooltip: 'Applies the series and volume rules again. Your edits are kept.',
@@ -168,6 +218,16 @@ class _SettingsPageState extends State<SettingsPage> {
                     toast('File names read again');
                   }),
                   Btn('Make missing covers', icon: Icons.image_outlined, onTap: Covers.I.queueMissing),
+                  Btn.ghost('Reset these library settings', icon: Icons.restart_alt, onTap: () {
+                    Settings.I
+                      ..progressLine = _d.progressLine
+                      ..showContinue = _d.showContinue
+                      ..showCollections = _d.showCollections
+                      ..watchFolders = _d.watchFolders
+                      ..save();
+                    Library.I.startWatching();
+                    Library.I.changed();
+                  }),
                 ]),
               ]),
               _group('Storage', 'Everywhere Sable keeps things, and how much space each uses.', [
@@ -186,7 +246,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     Db.I.resetHistory();
                     Library.I.load();
                   }),
-                  _reset('Look', 'The theme and accent go back to OLED black with the violet to pink accent.', () {
+                  _reset('Look', 'Both themes lose your colour changes, the accents and sizes go back to their defaults, and OLED black is chosen.', () {
                     Look.I.resetToDefault();
                   }),
                   _reset('Cover cache', 'Covers are made again when needed.', () async {
@@ -216,15 +276,30 @@ class _SettingsPageState extends State<SettingsPage> {
         ]),
       );
 
-  Widget _row(String label, Widget child) => Padding(
+  Settings get _d => Settings.defaults;
+
+  /// The little "back to the default" button shown next to a changed setting.
+  Widget _resetBtn(bool changed, VoidCallback? reset) => SizedBox(
+        width: lk.hControl,
+        child: changed && reset != null
+            ? IconBtn(Icons.restart_alt, tooltip: 'Back to the default', onTap: () {
+                reset();
+                setState(() {});
+              })
+            : null,
+      );
+
+  Widget _row(String label, Widget child, {bool changed = false, VoidCallback? reset}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(children: [
-          SizedBox(width: 160, child: Text(label, style: ts(c: tk.sec))),
-          Flexible(child: child),
+          SizedBox(width: 180, child: Text(label, style: ts(c: tk.sec))),
+          Flexible(child: Align(alignment: Alignment.centerLeft, child: child)),
+          const SizedBox(width: 6),
+          _resetBtn(changed, reset),
         ]),
       );
 
-  Widget _check(String label, bool v, ValueChanged<bool> on) => Padding(
+  Widget _check(String label, bool v, ValueChanged<bool> on, {bool? def}) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 1),
         child: Row(children: [
           Checkbox(value: v, onChanged: (x) {
@@ -233,8 +308,146 @@ class _SettingsPageState extends State<SettingsPage> {
           }),
           const SizedBox(width: 4),
           Flexible(child: Text(label, style: ts())),
+          const SizedBox(width: 6),
+          _resetBtn(def != null && v != def, def == null ? null : () {
+            on(def);
+            Settings.I.save();
+          }),
         ]),
       );
+
+  Widget _slider(double v, double min, double max, String label, void Function(double) set, {int? divisions, VoidCallback? done}) => SizedBox(
+        width: 420,
+        child: Row(children: [
+          Expanded(
+            child: Slider(
+              value: v.clamp(min, max),
+              min: min,
+              max: max,
+              divisions: divisions,
+              onChanged: (x) => setState(() => set(x)),
+              onChangeEnd: (_) => done != null ? done() : Settings.I.save(),
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(width: 200, child: Text(label, style: ts(c: tk.faint, size: 12))),
+        ]),
+      );
+
+  // ---------------- look ----------------
+
+  List<Widget> _look() {
+    final lkI = Look.I;
+    final themeName = lkI.theme;
+    final tokens = lkI.t.toMap();
+    final base = lkI.baseTokens(themeName).toMap();
+    final ov = lkI.overrides[themeName] ?? const {};
+    Widget swatch(Color c, {double w = 40, VoidCallback? onTap, Gradient? g}) => GestureDetector(
+          onTap: onTap,
+          child: MouseRegion(
+            cursor: onTap == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
+            child: Container(
+              width: w,
+              height: 22,
+              decoration: BoxDecoration(
+                color: g == null ? c : null,
+                gradient: g,
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: tk.line2),
+              ),
+            ),
+          ),
+        );
+    return [
+      _row('Theme', Seg<String>(
+        value: themeName,
+        items: [for (final n in themes.keys) (n, lkI.themeEdited(n) ? '$n (edited)' : n)],
+        onChanged: (v) => setState(() => lkI.setTheme(v)),
+      ), changed: themeName != 'OLED black', reset: () => lkI.setTheme('OLED black')),
+      _row('Accent', Wrap(spacing: 8, runSpacing: 8, crossAxisAlignment: WrapCrossAlignment.center, children: [
+        for (final e in accentPresets.entries)
+          Tooltip(
+            message: e.key,
+            child: GestureDetector(
+              onTap: () => setState(() => lkI.setAccent(e.key)),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: Container(
+                  width: 44,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: e.value.length == 1 ? [e.value.first, e.value.first] : e.value),
+                    borderRadius: BorderRadius.circular(11),
+                    border: Border.all(color: lkI.accentName == e.key ? tk.text : Colors.transparent, width: 2),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        Pill('Custom', active: lkI.accentName == 'Custom', onTap: () => setState(() => lkI.setAccent('Custom'))),
+      ]), changed: lkI.accentName != defaultAccentFor[themeName], reset: () {
+        lkI.accents[themeName] = defaultAccentFor[themeName]!;
+        lkI.save();
+      }),
+      if (lkI.accentName == 'Custom')
+        _row('Custom accent', Row(children: [
+          for (var i = 0; i < 3; i++) ...[
+            swatch(i < lkI.accent.length ? lkI.accent[i] : lkI.accent.last, onTap: () async {
+              final c = await pickColour(context, i < lkI.accent.length ? lkI.accent[i] : lkI.accent.last, i == 2 ? 'Accent: third colour (optional)' : 'Accent colour ${i + 1}');
+              if (c != null) setState(() => lkI.setCustomAccent(i, c));
+            }),
+            const SizedBox(width: 8),
+          ],
+          swatch(lkI.acc, w: 120, g: lkI.grad),
+          const SizedBox(width: 8),
+          if ((lkI.customAccents[themeName]?.length ?? 0) > 2)
+            Btn.ghost('Use two colours', dense: true, onTap: () {
+              lkI.customAccents[themeName] = lkI.customAccents[themeName]!.take(2).toList();
+              lkI.save();
+              setState(() {});
+            }),
+        ])),
+      const SizedBox(height: 6),
+      Text('$themeName colours', style: ts(w: FontWeight.w600)),
+      Text('Click a colour to change it. Changes are saved into the theme.', style: ts(c: tk.sec, size: 12)),
+      const SizedBox(height: 6),
+      Wrap(spacing: 18, runSpacing: 2, children: [
+        for (final e in tokenLabels.entries)
+          SizedBox(
+            width: 330,
+            child: Row(children: [
+              swatch(tokens[e.key]!, onTap: () async {
+                final c = await pickColour(context, tokens[e.key]!, '$themeName · ${e.value}');
+                if (c != null) setState(() => lkI.setToken(e.key, c));
+              }),
+              const SizedBox(width: 10),
+              Expanded(child: Text(e.value, style: ts(c: ov.containsKey(e.key) ? tk.text : tk.sec), overflow: TextOverflow.ellipsis)),
+              Text(colorHex(tokens[e.key]!), style: ts(mono: true, size: 11.5, c: tk.faint)),
+              _resetBtn(ov.containsKey(e.key) && colorHex(base[e.key]!) != ov[e.key], () => lkI.resetToken(e.key)),
+            ]),
+          ),
+      ]),
+      const SizedBox(height: 10),
+      _row('App size', _slider(lkI.appScale, 0.8, 1.6, '${(lkI.appScale * 100).round()}% · the whole window', (v) => lkI.appScale = v,
+          divisions: 16, done: lkI.save), changed: lkI.appScale != Look.defaultAppScale, reset: () {
+        lkI.appScale = Look.defaultAppScale;
+        lkI.save();
+      }),
+      _row('Reader controls size', _slider(lkI.readerScale, 0.8, 2.0, '${(lkI.readerScale * 100).round()}% · bars, panels and status line', (v) => lkI.readerScale = v,
+          divisions: 24, done: lkI.save), changed: lkI.readerScale != Look.defaultReaderScale, reset: () {
+        lkI.readerScale = Look.defaultReaderScale;
+        lkI.save();
+      }),
+      const SizedBox(height: 6),
+      Wrap(spacing: 8, children: [
+        Btn('Reset $themeName to default', icon: Icons.restart_alt, onTap: lkI.themeEdited(themeName) ? () {
+          lkI.resetTheme(themeName);
+          setState(() {});
+          toast('$themeName is back to its default colours');
+        } : null),
+      ]),
+    ];
+  }
 
   List<Widget> _folders() {
     final fs = Settings.I.folders;

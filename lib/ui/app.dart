@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use
 import 'dart:io';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart' hide Title;
 import 'package:window_manager/window_manager.dart';
@@ -37,13 +38,50 @@ class Nav extends ChangeNotifier {
   bool readerOpen = false;
   final FocusNode searchFocus = FocusNode();
 
+  // Where you've been, for the mouse's back and forward buttons.
+  final List<(PageId, String?, bool)> _back = [];
+  final List<(PageId, String?, bool)> _forward = [];
+  (PageId, String?, bool) get _here => (page, detail, detailIsSeries);
+
+  void _remember() {
+    if (_back.isNotEmpty && _back.last == _here) return;
+    _back.add(_here);
+    if (_back.length > 100) _back.removeAt(0);
+    _forward.clear();
+  }
+
+  void _restore((PageId, String?, bool) s) {
+    page = s.$1;
+    detail = s.$2;
+    detailIsSeries = s.$3;
+    notifyListeners();
+  }
+
+  bool get canGoBack => _back.isNotEmpty;
+  bool get canGoForward => _forward.isNotEmpty;
+
+  void back() {
+    if (_back.isEmpty) return;
+    _forward.add(_here);
+    _restore(_back.removeLast());
+  }
+
+  void forward() {
+    if (_forward.isEmpty) return;
+    _back.add(_here);
+    _restore(_forward.removeLast());
+  }
+
   void go(PageId p) {
+    if (p == page && (p != PageId.library || detail == null)) return;
+    _remember();
     page = p;
     if (p != PageId.library) detail = null;
     notifyListeners();
   }
 
   void openEntry(Entry e) {
+    _remember();
     page = PageId.library;
     if (e is SeriesEntry) {
       detail = e.key;
@@ -56,13 +94,24 @@ class Nav extends ChangeNotifier {
   }
 
   void openVolume(Volume v) {
+    _remember();
     page = PageId.library;
     detail = v.key;
     detailIsSeries = false;
     notifyListeners();
   }
 
+  void openSeriesKey(String key) {
+    _remember();
+    page = PageId.library;
+    detail = key;
+    detailIsSeries = true;
+    notifyListeners();
+  }
+
   void closeDetail() {
+    if (detail == null) return;
+    _remember();
     detail = null;
     notifyListeners();
   }
@@ -115,6 +164,7 @@ class SableApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         title: 'Sable',
         theme: Look.I.themeData(),
+        builder: (context, child) => UiScale(scale: Look.I.appScale, child: child ?? const SizedBox()),
         home: home ?? const Shell(),
       ),
     );
@@ -189,8 +239,9 @@ class _ShellState extends State<Shell> {
       return KeyEventResult.handled;
     }
     if (ctrl && k == LogicalKeyboardKey.keyF) {
+      Nav.I.closeDetail();
       Nav.I.go(PageId.library);
-      Nav.I.searchFocus.requestFocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) => Nav.I.searchFocus.requestFocus());
       return KeyEventResult.handled;
     }
     if (typingInField || ctrl) return KeyEventResult.ignored;
@@ -199,8 +250,9 @@ class _ShellState extends State<Shell> {
       case LogicalKeyboardKey.keyK:
         Nav.I.toggle('keys');
       case LogicalKeyboardKey.slash:
+        Nav.I.closeDetail();
         Nav.I.go(PageId.library);
-        Nav.I.searchFocus.requestFocus();
+        WidgetsBinding.instance.addPostFrameCallback((_) => Nav.I.searchFocus.requestFocus());
       case LogicalKeyboardKey.keyF:
         Nav.I.toggleFullScreen();
       case LogicalKeyboardKey.keyH:
@@ -226,7 +278,14 @@ class _ShellState extends State<Shell> {
       focusNode: _focus,
       autofocus: true,
       onKeyEvent: _onKey,
-      child: ListenableBuilder(
+      child: Listener(
+        // The mouse's back and forward buttons move through where you've been.
+        onPointerDown: (e) {
+          if (Nav.I.readerOpen) return;
+          if (e.buttons & kBackMouseButton != 0) Nav.I.back();
+          if (e.buttons & kForwardMouseButton != 0) Nav.I.forward();
+        },
+        child: ListenableBuilder(
         listenable: Nav.I,
         builder: (context, _) {
           final nav = Nav.I;
@@ -250,6 +309,7 @@ class _ShellState extends State<Shell> {
             ]),
           );
         },
+      ),
       ),
     );
   }
@@ -395,7 +455,9 @@ class StatusPills extends StatelessWidget {
 class Rail extends StatelessWidget {
   const Rail({super.key});
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(listenable: Nav.I, builder: (context, _) => _build(context));
+
+  Widget _build(BuildContext context) {
     final nav = Nav.I;
     Widget item(IconData icon, String label, bool active, VoidCallback onTap, {int? badge}) => Hoverable(
           builder: (h) => GestureDetector(
@@ -445,8 +507,11 @@ class Rail extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         item(Icons.auto_stories_outlined, 'Library', nav.page == PageId.library, () {
-          if (nav.page == PageId.library) nav.closeDetail();
-          nav.go(PageId.library);
+          if (nav.page == PageId.library) {
+            nav.closeDetail();
+          } else {
+            nav.go(PageId.library);
+          }
         }),
         item(Icons.history, 'History', nav.page == PageId.history, () => nav.go(PageId.history)),
         item(Icons.insights_outlined, 'Stats', nav.page == PageId.stats, () => nav.go(PageId.stats)),
@@ -626,6 +691,7 @@ const keyGroups = <(String, List<(String, String)>)>[
     ('R', 'Random book'),
     ('+ −, Ctrl+wheel', 'Bigger or smaller covers'),
     ('Backspace', 'Back to the library'),
+    ('Mouse ◀ ▶', 'Back / forward through where you\'ve been'),
   ]),
   ('Reader', [
     ('← →', 'Previous / next page'),
@@ -638,7 +704,14 @@ const keyGroups = <(String, List<(String, String)>)>[
     ('/', 'Search in the book'),
     ('V', 'Favourite'),
     ('N', 'Next volume'),
+    ('Mouse ◀ ▶', 'Previous / next page (can be changed)'),
     ('Esc', 'Close the reader'),
+  ]),
+  ('Pictures', [
+    ('Click a picture', 'Open it full screen'),
+    ('← →', 'Previous / next picture in the book'),
+    ('Wheel, drag', 'Zoom, move'),
+    ('Esc, click outside', 'Close'),
   ]),
   ('Dialogs', [
     ('Enter', 'Confirm'),

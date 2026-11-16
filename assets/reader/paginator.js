@@ -512,6 +512,8 @@ export class Paginator extends HTMLElement {
             grid-column: 1 / -1;
             grid-row: 1 / -1;
             overflow: auto;
+            /* Sable: no scrollbar; the app shows the position itself */
+            scrollbar-width: none;
         }
         #header {
             grid-column: 3 / 4;

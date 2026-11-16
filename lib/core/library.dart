@@ -243,6 +243,9 @@ class Library extends ChangeNotifier {
   Timer? _watchDebounce;
   PdfInspector? pdfInspector;
 
+  /// Passwords for locked ZIPs: from Settings and from password .txt files.
+  List<String> zipPasswords = [];
+
   // Cached grouping, rebuilt when the library changes.
   Map<String, Volume>? _volumes;
   Map<String, List<Volume>>? _series;
@@ -581,7 +584,7 @@ class Library extends ChangeNotifier {
         continue;
       }
       final root = lf.path;
-      final files = await Isolate.run(() => _listFiles(root));
+      final files = await listFilesInIsolate(root);
       for (final f in files) {
         (f.$1.toLowerCase().endsWith('.zip') ? zips : listed)[f.$1] = (f.$2, f.$3, lf);
       }
@@ -607,16 +610,7 @@ class Library extends ChangeNotifier {
     }
     if (zipsToList.isNotEmpty) {
       job.setDetail('Looking inside ${zipsToList.length} ZIPs…');
-      final found = await Isolate.run(() => [
-            for (final z in zipsToList)
-              (z, () {
-                try {
-                  return zipBookEntries(z);
-                } catch (_) {
-                  return <(String, int)>[];
-                }
-              }())
-          ]);
+      final found = await listZipsInIsolate(zipsToList);
       for (final (z, entries) in found) {
         for (final (name, size) in entries) {
           listed['$z$zipSep$name'] = (size, zips[z]!.$2, zips[z]!.$3);
@@ -656,11 +650,17 @@ class Library extends ChangeNotifier {
     final total = toInspect.length;
     var done = 0, added = 0, moved = 0, updated = 0, failed = 0;
     job.progress(0, total: total, detail: total == 0 ? 'Nothing new' : 'Reading new and changed books');
-    const batchSize = 16;
+    // Books are read on several cores at once.
+    final roots = Settings.I.folders.map((f) => f.path).toList();
+    zipPasswords = [...Settings.I.zipPasswords, ...await passwordsInIsolate(roots)];
+    final workers = max(2, min(6, Platform.numberOfProcessors - 1));
+    const per = 8;
+    final batchSize = per * workers;
     for (var i = 0; i < toInspect.length; i += batchSize) {
       if (!await job.checkpoint()) break;
       final batch = toInspect.sublist(i, min(i + batchSize, toInspect.length));
-      final infos = await Isolate.run(() => batch.map((x) => inspectBook(x)).toList());
+      final parts = [for (var j = 0; j < batch.length; j += per) batch.sublist(j, min(j + per, batch.length))];
+      final infos = (await Future.wait(parts.map((x) => inspectInIsolate(x, zipPasswords)))).expand((x) => x).toList();
       for (final info in infos) {
         if (info.format == 'pdf' && info.error == null) await _inspectPdf(info);
       }
@@ -702,7 +702,7 @@ class Library extends ChangeNotifier {
       }
       Db.I.raw.execute('COMMIT');
       job.progress(done, detail: p.basename(batch.last));
-      if (done % (batchSize * 6) == 0) changed();
+      if ((i ~/ batchSize) % 4 == 3) changed();
     }
     changed();
     Covers.I.queueMissing();
@@ -711,7 +711,7 @@ class Library extends ChangeNotifier {
         '${failed > 0 ? ' · $failed couldn\'t be read' : ''}${missing > 0 ? ' · $missing not found' : ''}';
   }
 
-  static List<(String, int, int)> _listFiles(String root) {
+  static List<(String, int, int)> listFiles(String root) {
     final out = <(String, int, int)>[];
     void walk(Directory d) {
       List<FileSystemEntity> items;
@@ -762,7 +762,7 @@ class Library extends ChangeNotifier {
     final out = File(p.join(AppPaths.I.bookCache, name));
     if (await out.exists()) return out.path;
     final zip = outerPath(path), inner = innerName(path);
-    final bytes = await Isolate.run(() => readZipEntry(zip, inner));
+    final bytes = await readZipInIsolate(zip, inner, zipPasswords);
     if (bytes == null) throw 'the book isn\'t in the ZIP any more';
     await writeFileSafely(out.path, bytes);
     return out.path;
@@ -918,7 +918,7 @@ class Covers extends ChangeNotifier {
         if (!await job.checkpoint()) break;
         final batch = todo.sublist(i, min(i + 8, todo.length));
         final paths = batch.where((b) => b.format != 'pdf').map((b) => b.path).toList();
-        final infos = await Isolate.run(() => paths.map((x) => inspectBook(x)).toList());
+        final infos = await inspectInIsolate(paths, Library.I.zipPasswords);
         for (final info in infos) {
           if (info.cover != null) {
             await writeFileSafely(fileForFp(info.fingerprint), info.cover!);
@@ -957,3 +957,27 @@ class Covers extends ChangeNotifier {
     return total;
   }
 }
+
+// Isolate helpers. They're top-level on purpose: a closure made inside a method
+// can carry the object it belongs to, which can't be sent to another isolate.
+
+Future<List<BookInfo>> inspectInIsolate(List<String> paths, List<String> passwords) =>
+    Isolate.run(() => [for (final x in paths) inspectBook(x, passwords: passwords)]);
+
+Future<Uint8List?> readZipInIsolate(String zip, String inner, List<String> passwords) =>
+    Isolate.run(() => readZipEntry(zip, inner, passwords: passwords));
+
+Future<List<(String, int, int)>> listFilesInIsolate(String root) => Isolate.run(() => Library.listFiles(root));
+
+Future<List<(String, List<(String, int)>)>> listZipsInIsolate(List<String> zips) => Isolate.run(() => [
+      for (final z in zips)
+        (z, () {
+          try {
+            return zipBookEntries(z);
+          } catch (_) {
+            return <(String, int)>[];
+          }
+        }())
+    ]);
+
+Future<List<String>> passwordsInIsolate(List<String> roots) => Isolate.run(() => passwordsFromFiles(roots));

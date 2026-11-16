@@ -44,6 +44,9 @@ String formatOf(String name) {
 final _volRe = RegExp(
     r'(?:^|[\s,\-–—_(\[])(?:LN|Vol(?:ume)?)\s*[.\-_]?\s*(\d{1,3}(?:\.\d)?)(?!\d)',
     caseSensitive: false);
+
+/// "Is It Wrong to Try to Pick Up G - V10", "-V2": a capital V right after a dash or space.
+final _vRe = RegExp(r'(?:^|[\s\-–—])V\s?(\d{1,3})(?!\d)');
 final _bracketSeriesRe = RegExp(r'\[([^\[\]]+?)\s+(\d{1,3}(?:\.\d)?)\]');
 final _leadingNumRe = RegExp(r'^\((\d{1,3})\)\s*');
 final _trailingNumRe = RegExp(r'^(.*?\D)\s+(\d{1,3}(?:\.\d)?)$');
@@ -121,7 +124,7 @@ ParsedName parseBookName(String fileName, {String relDir = '', bool seriesFromFo
     title = subtitle ?? series;
   } else {
     final cleaned = cleanName(title);
-    final m = _volRe.firstMatch(cleaned);
+    final m = _volRe.firstMatch(cleaned) ?? _vRe.firstMatch(cleaned);
     if (m != null) {
       volume = double.tryParse(m.group(1)!);
       final before = trimSeparators(cleaned.substring(0, m.start));

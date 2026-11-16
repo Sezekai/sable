@@ -69,6 +69,7 @@ Future<void> main(List<String> args) async {
   if (marker.existsSync()) unclean = (int.tryParse(marker.readAsStringSync().trim()) ?? 0) + 1;
   marker.writeAsStringSync('$unclean');
   final safeMode = unclean >= 2;
+  if (unclean >= 1) _reportNativeCrash();
   if (safeMode) {
     AppLog.I.warn('Sable didn\'t close properly twice in a row, so folder watching is off for this run. '
         'Turn it back on in Settings → Library.');
@@ -177,6 +178,25 @@ class _WindowKeeper with WindowListener {
   }
 }
 
+/// After a crash outside Dart code, the runner leaves a short report in the logs.
+void _reportNativeCrash() {
+  try {
+    final files = Directory(AppPaths.I.logs)
+        .listSync()
+        .whereType<File>()
+        .where((f) => p.basename(f.path).startsWith('native-crash-') && f.path.endsWith('.txt'))
+        .toList()
+      ..sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
+    if (files.isEmpty) {
+      AppLog.I.warn('Sable didn\'t close properly last time, and left no crash report.');
+      return;
+    }
+    final f = files.first;
+    if (DateTime.now().difference(f.statSync().modified).inDays > 2) return;
+    AppLog.I.warn('Sable stopped unexpectedly last time. Report: ${f.path}\n${f.readAsStringSync().trim()}');
+  } catch (_) {}
+}
+
 /// Books copied out of ZIPs are kept for a while, then cleared down to 1 GB.
 Future<void> _trimBookCache() async {
   try {
@@ -275,6 +295,12 @@ Future<void> _runSelftest() async {
     check(pdfs.isNotEmpty && pdfs.every((b) => b.pages > 0), 'PDF page counts read (${pdfs.map((b) => b.pages).join(', ')})');
     final covers = books.where((b) => Covers.I.cached(b) != null).length;
     check(covers == 6, 'covers made ($covers of 6)');
+    // Covers that go missing (cache cleared) are made again.
+    Covers.I.cached(books.first)?.deleteSync();
+    Covers.I.queueMissing();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    await _waitJobs();
+    check(Covers.I.cached(books.first) != null, 'missing covers are made again');
     final epub = books.firstWhere((b) => b.format == 'epub' && b.volume == 1);
     check(epub.displayAuthor == 'Test Writer', 'author read from the EPUB');
     check(epub.textBytes > 10000, 'book length measured (${epub.length} pages)');
@@ -293,7 +319,7 @@ Future<void> _runSelftest() async {
 
     // EPUB reader.
     final ctx = navKey.currentContext;
-    if (ctx != null) {
+    if (ctx != null && ctx.mounted) {
       unawaited(openBook(ctx, epub));
       final until = DateTime.now().add(const Duration(seconds: 40));
       while (DateTime.now().isBefore(until) && (ReaderControl.active == null || ReaderControl.active!.relocations == 0)) {
@@ -358,6 +384,22 @@ Future<void> _runSelftest() async {
       await Future<void>.delayed(const Duration(milliseconds: 800));
       await _screenshot(name);
     }
+    // Back and forward (the mouse's side buttons) move through where you've been.
+    Nav.I.back();
+    check(Nav.I.page == PageId.stats, 'back goes to the page before');
+    Nav.I.forward();
+    check(Nav.I.page == PageId.settings, 'forward comes back');
+    // Editing a theme, then putting it back.
+    Look.I.setToken('ground', const Color(0xFF101018));
+    check(Look.I.t.ground == const Color(0xFF101018) && Look.I.themeEdited('OLED black'), 'theme colours can be changed');
+    Look.I.resetTheme('OLED black');
+    check(Look.I.t.ground == const Color(0xFF000000) && !Look.I.themeEdited('OLED black'), 'theme reset puts them back');
+    Look.I.appScale = 1.2;
+    Look.I.save();
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    await _screenshot('settings-120');
+    Look.I.appScale = 1.0;
+    Look.I.save();
     Look.I.setTheme('Starlight');
     Nav.I.go(PageId.library);
     await Future<void>.delayed(const Duration(milliseconds: 800));

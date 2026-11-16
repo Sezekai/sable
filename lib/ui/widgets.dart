@@ -262,10 +262,12 @@ class Field extends StatelessWidget {
         cursorColor: lk.acc,
         decoration: InputDecoration(
           isDense: true,
+          // The box fills the whole control height, so it lines up with the buttons beside it.
+          constraints: BoxConstraints.tightFor(height: lk.hControl),
           hintText: hint,
           hintStyle: ts(c: tk.faint),
           prefixIcon: icon == null ? null : Icon(icon, size: 16, color: tk.faint),
-          prefixIconConstraints: const BoxConstraints(minWidth: 30),
+          prefixIconConstraints: BoxConstraints(minWidth: 30, minHeight: lk.hControl),
           filled: true,
           fillColor: tk.field,
           contentPadding: const EdgeInsets.symmetric(horizontal: 10),
@@ -635,4 +637,118 @@ String dateText(int epochSec) {
 String timeText(int epochSec) {
   final d = DateTime.fromMillisecondsSinceEpoch(epochSec * 1000);
   return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+}
+
+/// A colour picker: hue, saturation and brightness sliders, a hex box and a preview.
+Future<Color?> pickColour(BuildContext context, Color start, String title) {
+  return showDialog<Color>(
+    context: context,
+    barrierColor: Colors.black54,
+    builder: (_) => _ColourDialog(start: start, title: title),
+  );
+}
+
+class _ColourDialog extends StatefulWidget {
+  const _ColourDialog({required this.start, required this.title});
+  final Color start;
+  final String title;
+  @override
+  State<_ColourDialog> createState() => _ColourDialogState();
+}
+
+class _ColourDialogState extends State<_ColourDialog> {
+  late HSVColor hsv = HSVColor.fromColor(widget.start);
+  late final hex = TextEditingController(text: _hex(widget.start));
+
+  static String _hex(Color c) => '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
+
+  void _set(HSVColor v) => setState(() {
+        hsv = v;
+        hex.text = _hex(v.toColor());
+      });
+
+  Widget _track(String label, double value, double max, List<Color> colors, ValueChanged<double> on) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(children: [
+          SizedBox(width: 90, child: Text(label, style: ts(c: tk.sec))),
+          Expanded(
+            child: LayoutBuilder(builder: (context, c) {
+              void at(double x) => on((x / c.maxWidth).clamp(0.0, 1.0) * max);
+              return GestureDetector(
+                onTapDown: (d) => at(d.localPosition.dx),
+                onHorizontalDragUpdate: (d) => at(d.localPosition.dx),
+                child: SizedBox(
+                  height: 22,
+                  child: Stack(clipBehavior: Clip.none, children: [
+                    Positioned.fill(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(colors: colors),
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(color: tk.line2),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      left: (value / max) * c.maxWidth - 9,
+                      top: 2,
+                      child: Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: hsv.toColor(),
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)],
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+              );
+            }),
+          ),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final c = hsv.toColor();
+    return AppDialog(
+      title: widget.title,
+      width: 460,
+      body: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(width: 80, height: 48, decoration: BoxDecoration(color: widget.start, borderRadius: const BorderRadius.horizontal(left: Radius.circular(8)))),
+          Container(width: 80, height: 48, decoration: BoxDecoration(color: c, borderRadius: const BorderRadius.horizontal(right: Radius.circular(8)))),
+          const SizedBox(width: 12),
+          Text('Before · after', style: ts(c: tk.faint, size: 12)),
+          const Spacer(),
+          SizedBox(
+            width: 110,
+            child: Field(
+              controller: hex,
+              mono: true,
+              onChanged: (v) {
+                final t = v.replaceAll('#', '').trim();
+                if (RegExp(r'^[0-9a-fA-F]{6}$').hasMatch(t)) {
+                  setState(() => hsv = HSVColor.fromColor(Color(int.parse('FF$t', radix: 16))));
+                }
+              },
+            ),
+          ),
+        ]),
+        const SizedBox(height: 10),
+        _track('Hue', hsv.hue, 360, [for (var h = 0; h <= 360; h += 60) HSVColor.fromAHSV(1, h.toDouble(), 1, 1).toColor()],
+            (v) => _set(hsv.withHue(v.clamp(0, 359.9)))),
+        _track('Colourfulness', hsv.saturation, 1, [hsv.withSaturation(0).toColor(), hsv.withSaturation(1).toColor()],
+            (v) => _set(hsv.withSaturation(v))),
+        _track('Brightness', hsv.value, 1, [Colors.black, hsv.withValue(1).toColor()], (v) => _set(hsv.withValue(v))),
+      ]),
+      actions: [
+        Btn('Cancel', onTap: () => Navigator.pop(context)),
+        Btn.primary('Use this colour', onTap: () => Navigator.pop(context, c)),
+      ],
+    );
+  }
 }

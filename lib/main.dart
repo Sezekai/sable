@@ -114,7 +114,13 @@ Future<void> main(List<String> args) async {
     });
   });
 
-  runApp(RepaintBoundary(key: _shotKey, child: const SableApp()));
+  // Flutter's Windows accessibility bridge crashes (null AXNode in
+  // AccessibilityBridge::CreateRemoveReparentedNodesUpdate) when an
+  // accessibility client — a screen reader, or an app that reads other
+  // windows through UI Automation — is active while the library grid
+  // rebuilds. Sable doesn't offer screen-reader support, so the semantics
+  // tree is kept empty and the bridge has nothing to reparent.
+  runApp(RepaintBoundary(key: _shotKey, child: const ExcludeSemantics(child: SableApp())));
 
   WidgetsBinding.instance.addPostFrameCallback((_) async {
     if (selftest) {
@@ -274,6 +280,9 @@ Future<void> _waitJobs([int seconds = 120]) async {
 }
 
 Future<void> _runSelftest() async {
+  // Turn accessibility on, as a screen reader or UI Automation client would,
+  // so the self-test goes through the path that crashed in 1.1.0.
+  final semantics = SemanticsBinding.instance.ensureSemantics();
   var ok = true;
   final out = StringBuffer();
   void check(bool c, String what) {
@@ -413,6 +422,7 @@ Future<void> _runSelftest() async {
     ok = false;
     out.writeln('FAIL exception: $e\n$st');
   }
+  semantics.dispose();
   final report = 'SELFTEST ${ok ? 'PASSED' : 'FAILED'}\n$out\n--- log ---\n${AppLog.I.lines.join('\n')}';
   File(p.join(AppPaths.I.logs, 'selftest.txt')).writeAsStringSync(report);
   stdout.writeln(report);

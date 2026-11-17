@@ -41,7 +41,7 @@ class ReadingStyle {
   String font = 'Literata'; // book | Literata | Inter | Georgia | Palatino Linotype
   double size = 18; // px
   double spacing = 1.5;
-  double marginX = 48; // px at the left and right
+  double marginX = 96; // px at the left and right of the text (and between two pages)
   double marginY = 44; // px at the top and bottom
 
   /// Text colour on the page as #rrggbb, or '' for the theme's own.
@@ -75,7 +75,9 @@ class ReadingStyle {
     if (!readingFonts.contains(font)) font = 'Literata';
     size = ((m['size'] as num?)?.toDouble() ?? size).clamp(12, 36);
     spacing = ((m['spacing'] as num?)?.toDouble() ?? spacing).clamp(1.0, 2.4);
-    marginX = ((m['marginX'] as num?)?.toDouble() ?? (m['margin'] as num?)?.toDouble() ?? marginX).clamp(0, 240);
+    // Before 1.2, one 'margin' setting was half the space at the sides.
+    final old = (m['margin'] as num?)?.toDouble();
+    marginX = ((m['marginX'] as num?)?.toDouble() ?? (old == null ? null : old * 2) ?? marginX).clamp(0, 320);
     marginY = ((m['marginY'] as num?)?.toDouble() ?? marginY).clamp(0, 200);
     final tc = m['textColor'];
     textColor = tc is String && RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(tc) ? tc : (tc == '' ? '' : textColor);

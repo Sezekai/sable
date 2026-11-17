@@ -1,4 +1,4 @@
-Sable 1.2.0
+Sable 1.2.1
 
 Reader
 - Margins: set the side margins and the top and bottom margins separately.
@@ -24,4 +24,6 @@ Library
 - A clear-all-filters button next to Filters.
 - The mouse wheel scrolls twice as far per notch.
 
-Download `Sable-v1.2.0-windows.zip`, then replace the `App` folder in `E:\Pictures\Sable\` with the new one. Your library and settings are kept.
+Download `Sable-v1.2.1-windows.zip`, then replace the `App` folder in `E:\Pictures\Sable\` with the new one. Your library and settings are kept.
+
+1.2.1 (same day): the side margin is now the real space in pixels at each side of the text (and between two pages), and big margins no longer squeeze the text into a thin strip in a small window (each page keeps at least a column's worth of text); the controls menu hint fits on one line, and the library search box keeps a short hint in narrow windows.

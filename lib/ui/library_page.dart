@@ -224,7 +224,7 @@ class LibraryPageState extends State<LibraryPage> {
                   child: Field(
                     controller: search,
                     focusNode: Nav.I.searchFocus,
-                    hint: 'Search titles, series, authors and tags  ( / )',
+                    hint: narrow ? 'Search  ( / )' : 'Search titles, series, authors and tags  ( / )',
                     icon: Icons.search,
                     onChanged: (v) {
                       Library.I.filter.search = v;

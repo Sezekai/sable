@@ -956,14 +956,19 @@ class ReaderPageState extends State<ReaderPage> {
                       style: ts(w: FontWeight.w600),
                       overflow: TextOverflow.ellipsis,
                     ),
-                    if (chapter.isNotEmpty)
+                    if (chapter.isNotEmpty && !menu)
                       Text(
                         chapter,
                         style: ts(size: 11.5, c: tk.faint),
                         overflow: TextOverflow.ellipsis,
                       ),
                     if (menu)
-                      Text('Arrow keys to move · Space or Enter to choose · M or Esc to close', style: ts(size: 11, c: lk.acc)),
+                      Text(
+                        '← → move · Enter or Space choose · M or Esc close',
+                        style: ts(size: 11, c: lk.acc),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                   ],
                 ),
               ),
@@ -1399,8 +1404,8 @@ class ReaderPageState extends State<ReaderPage> {
             Slider(
               value: s.marginX,
               min: 0,
-              max: 240,
-              divisions: 24,
+              max: 320,
+              divisions: 32,
               label: '${s.marginX.round()} px',
               onChanged: (v) => setState(() => s.marginX = v),
               onChangeEnd: (_) => _styleChanged(),

@@ -93,9 +93,13 @@ const applyLayout = () => {
     r.setAttribute('max-inline-size', cols === 2 ? `${Math.max(320, Math.floor(w / 2))}px` : `${Math.max(420, Math.min(780, w))}px`)
     // Left and right margins set the gap at the sides (and between two pages);
     // top and bottom margins set the space above and below the text.
-    const mx = style.marginX ?? style.margin ?? 48
+    // (The book view puts a gap of this share of the window at each side and
+    // between pages.) Each page keeps at least ~260px of text, however big the
+    // margins are set.
+    const mx = style.marginX ?? (style.margin ? style.margin * 2 : 96)
     const my = style.marginY ?? 44
-    const gap = Math.max(1, Math.min(40, (mx * 2) / w * 100))
+    const most = Math.max(1, ((w - 260 * cols) / (w * (cols + 1))) * 100)
+    const gap = Math.max(0.5, Math.min(40, most, mx / w * 100))
     r.setAttribute('gap', `${gap.toFixed(1)}%`)
     r.setAttribute('margin', `${Math.round(my)}px`)
     if (style.animate) r.setAttribute('animated', '')

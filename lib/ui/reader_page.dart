@@ -638,6 +638,10 @@ class ReaderPageState extends State<ReaderPage> {
       togglePanel('search');
       return true;
     }
+    if (ctrl && k == 'w' && isDesktop) {
+      windowManager.close();
+      return true;
+    }
     if (ctrl) return false;
     switch (k) {
       case 't':

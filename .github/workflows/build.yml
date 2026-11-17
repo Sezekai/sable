@@ -173,7 +173,9 @@ jobs:
             echo "SABLE_KEYSTORE=$RUNNER_TEMP/sable.jks" >> "$GITHUB_ENV"
             echo "Signing with Sable's release key"
           else
-            echo "::warning::No release key set, so the APK is signed with a throwaway key: it won't install over an earlier Sable APK."
+            # A throwaway key would stop later updates installing over this one.
+            echo "::error::The release key isn't set (secrets SABLE_KEYSTORE_B64 and SABLE_KEYSTORE_PASSWORD), so no APK is made."
+            exit 1
           fi
 
       - name: Build the APK (for 64-bit ARM phones, like the Honor Magic V3)

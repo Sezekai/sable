@@ -228,18 +228,30 @@ class _WindowKeeper with WindowListener {
 
   @override
   void onWindowClose() async {
-    // Closing the reader records the session.
-    navKey.currentState?.popUntil((r) => r.isFirst);
-    await Future<void>.delayed(const Duration(milliseconds: 50));
+    // The window goes at once; saving happens behind it.
+    try {
+      await windowManager.hide();
+    } catch (_) {}
+    // A book open in the reader records its session now.
+    try {
+      ReaderControl.active?.tracker.close();
+    } catch (_) {}
     Jobs.I.stop();
+    try {
+      await SyncServer.I.stop();
+    } catch (_) {}
     try {
       Db.I.close();
     } catch (_) {}
     try {
       marker.deleteSync();
     } catch (_) {}
+    AppLog.I.info('Closed');
     await AppLog.I.flush();
-    await windowManager.destroy();
+    // Everything is saved: end the process straight away rather than waiting
+    // for the book engine (WebView2), the folder watchers and background work
+    // to wind down one by one, which is what made closing slow.
+    exit(0);
   }
 }
 

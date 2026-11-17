@@ -223,6 +223,8 @@ class LibraryPageState extends State<LibraryPage> {
       padding: const EdgeInsets.fromLTRB(12, 8, 6, 6),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
+          const SableLogo(size: 24),
+          const SizedBox(width: 8),
           Text('Library', style: ts(size: 19, w: FontWeight.w700)),
           const SizedBox(width: 8),
           Text('${_entries.length}', style: ts(c: tk.faint, tab: true)),

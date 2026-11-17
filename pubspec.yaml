@@ -2,7 +2,7 @@ name: sable
 description: "Sable: a library and reader for books and light novels."
 publish_to: 'none'
 
-version: 1.3.0+7
+version: 1.3.1+8
 
 environment:
   sdk: ^3.14.0
@@ -32,6 +32,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - assets/icon.png
     - assets/reader/
     - assets/reader/vendor/
     - assets/reader/fonts/

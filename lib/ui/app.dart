@@ -228,6 +228,11 @@ class _ShellState extends State<Shell> {
       if (k == LogicalKeyboardKey.keyK || k == LogicalKeyboardKey.escape) Nav.I.toggle('keys');
       return true; // nothing else happens while the shortcuts are showing
     }
+    // Ctrl+W closes Sable (on any screen, the reader too).
+    if (k == LogicalKeyboardKey.keyW && kb.isControlPressed && isDesktop) {
+      windowManager.close();
+      return true;
+    }
     if (k == LogicalKeyboardKey.keyK && !typingInField && !kb.isControlPressed && !kb.isAltPressed && !kb.isMetaPressed) {
       Nav.I.toggle('keys');
       return true;
@@ -573,12 +578,7 @@ class Rail extends StatelessWidget {
       child: Column(
         children: [
           const SizedBox(height: 8),
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(gradient: lk.grad, borderRadius: BorderRadius.circular(lk.rPanel)),
-            child: Icon(Icons.nightlight_round, size: 19, color: lk.onAcc),
-          ),
+          const SableLogo(size: 40),
           const SizedBox(height: 10),
           item(Icons.auto_stories_outlined, 'Library', nav.page == PageId.library, () {
             if (nav.page == PageId.library) {
@@ -789,6 +789,7 @@ const keyGroups = <(String, List<(String, String)>)>[
       ('K', 'Keyboard shortcuts'),
       ('/', 'Search the library'),
       ('Ctrl+F', 'Search the library'),
+      ('Ctrl+W', 'Close Sable'),
       ('F, F11', 'Full screen'),
       ('H', 'Hide panels'),
       ('M', 'Show or hide the sidebar (in the reader: the controls menu)'),

@@ -378,6 +378,15 @@ class _PercentFieldState extends State<PercentField> {
   }
 }
 
+/// Sable's logo (the same picture as the app's icon).
+class SableLogo extends StatelessWidget {
+  const SableLogo({super.key, this.size = 20});
+  final double size;
+  @override
+  Widget build(BuildContext context) =>
+      Image.asset('assets/icon.png', width: size, height: size, filterQuality: FilterQuality.medium);
+}
+
 class PanelBox extends StatelessWidget {
   const PanelBox({super.key, required this.child, this.padding = const EdgeInsets.all(10)});
   final Widget child;

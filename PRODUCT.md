@@ -21,7 +21,7 @@ The collection, as found in November 2026:
 ## Stages
 
 1. **This release:** the complete PC app.
-2. **Next:** the Android app (same codebase): pairs with the PC on home WiFi, browses the whole library offline with covers, history and stats, downloads chosen books or series (never everything automatically), and syncs positions, history, ratings, favourites, tags and bookmarks both ways. Its sync is separate from Shiori's.
+2. **Done in 1.3.0:** the Android app (same codebase): pairs with the PC on home WiFi, browses the whole library offline with covers, history and stats, downloads chosen books or series (never everything automatically), and syncs positions, history, ratings, favourites, tags and bookmarks both ways. Its sync is separate from Shiori's.
 
 ## Decisions for this app (STANDARDS.md "App chooses" and "When relevant")
 

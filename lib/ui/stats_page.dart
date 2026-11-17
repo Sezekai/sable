@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:material_ui/material_ui.dart';
 
+import '../core/platform.dart';
 import '../core/db.dart';
 import '../core/jobs.dart';
 import '../core/library.dart';
@@ -154,13 +155,12 @@ class _StatsPageState extends State<StatsPage> {
         ]),
         const SizedBox(height: 8),
         PanelBox(
-          child: Row(children: [
+          child: Wrap(spacing: 8, runSpacing: 8, children: [
             Seg<Tri>(
               value: kind,
               items: const [(Tri.any, 'Everything'), (Tri.yes, 'Light novels'), (Tri.no, 'Books')],
               onChanged: (v) => setState(() => kind = v),
             ),
-            const SizedBox(width: 8),
             Seg<String>(
               value: period,
               items: const [('all', 'All time'), ('year', 'This year'), ('month', 'This month'), ('30', 'Last 30 days')],
@@ -195,7 +195,7 @@ class _StatsPageState extends State<StatsPage> {
               card('Books finished per month', Bars(values: monthBooks, labels: [for (final m in months) mn[m.month - 1]], height: 160)),
               card('Pages read per month', Bars(values: monthPages, labels: [for (final m in months) mn[m.month - 1]], height: 160)),
               card('Hours reading per month', Bars(values: monthHours, labels: [for (final m in months) mn[m.month - 1]], height: 160, decimals: 1)),
-              card('Reading days, last 26 weeks', Heatmap(dayPages: dayPages, today: today)),
+              card('Reading days, last 26 weeks', SingleChildScrollView(scrollDirection: Axis.horizontal, reverse: true, child: Heatmap(dayPages: dayPages, today: today))),
               card('When you read (minutes by hour of day)',
                   Bars(values: hours, labels: [for (var h = 0; h < 24; h++) h % 3 == 0 ? '$h' : ''], height: 140)),
               card('Ratings', Bars(values: ratingDist, labels: [for (var i = 1; i <= 10; i++) (i / 2).toString().replaceAll('.0', '')], height: 140)),
@@ -235,7 +235,7 @@ class _StatsPageState extends State<StatsPage> {
   Widget _rankRow(String name, String value, double frac) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 3),
         child: Row(children: [
-          SizedBox(width: 220, child: Text(name, style: ts(), overflow: TextOverflow.ellipsis)),
+          SizedBox(width: isPhone ? 130 : 220, child: Text(name, style: ts(), overflow: TextOverflow.ellipsis)),
           Expanded(child: Progress(value: frac, height: 6)),
           SizedBox(width: 80, child: Text(value, textAlign: TextAlign.right, style: ts(c: tk.sec, tab: true))),
         ]),

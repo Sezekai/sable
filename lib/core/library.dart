@@ -28,6 +28,9 @@ class LibFilter {
   Tri series = Tri.any;
   Tri ln = Tri.any; // yes = light novels only, no = books only
   Tri pdf = Tri.any;
+
+  /// Phone: downloaded to the phone or not.
+  Tri downloaded = Tri.any;
   Set<String> authors = {};
   Set<String> excludeAuthors = {};
   Set<int> tags = {};
@@ -51,6 +54,7 @@ class LibFilter {
       search.isEmpty &&
       read == Tri.any &&
       inProgress == Tri.any &&
+      downloaded == Tri.any &&
       favourite == Tri.any &&
       rated == Tri.any &&
       series == Tri.any &&
@@ -260,6 +264,9 @@ class Library extends ChangeNotifier {
   Map<String, Volume>? _volumes;
   Map<String, List<Volume>>? _series;
 
+  /// Phone: whether a book is downloaded to the phone.
+  bool Function(Book b)? onDevice;
+
   List<Book> get books => _books;
   List<Tag> get tags => _tags;
   Book? byId(int id) => _byId[id];
@@ -371,6 +378,7 @@ class Library extends ChangeNotifier {
     if (!tri(f.series, inSeries)) return false;
     if (!tri(f.ln, b.displayKind == Kind.ln)) return false;
     if (!tri(f.pdf, v.files.every((x) => x.format == 'pdf'))) return false;
+    if (f.downloaded != Tri.any && !tri(f.downloaded, v.files.any((x) => onDevice?.call(x) ?? false))) return false;
     if (f.folders.isNotEmpty || f.excludeFolders.isNotEmpty) {
       final root = rootOf(b.path);
       if (f.folders.isNotEmpty && !f.folders.contains(root)) return false;
@@ -947,6 +955,9 @@ class Covers extends ChangeNotifier {
     final f = File(fileFor(b));
     return f.existsSync() ? f : null;
   }
+
+  /// Tells the covers on screen to look again (after new covers arrived).
+  void changedNow() => notifyListeners();
 
   /// After two unclean exits in a row, covers aren't made in the background.
   bool safeMode = false;

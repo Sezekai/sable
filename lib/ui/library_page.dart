@@ -8,9 +8,12 @@ import 'package:material_ui/material_ui.dart';
 import '../core/db.dart';
 import '../core/jobs.dart';
 import '../core/library.dart';
+import '../core/downloads.dart';
+import '../core/platform.dart';
 import '../core/settings.dart';
 import 'app.dart';
 import 'filters_panel.dart';
+import 'phone.dart';
 import 'reader_page.dart';
 import 'widgets.dart';
 
@@ -142,7 +145,7 @@ class LibraryPageState extends State<LibraryPage> {
       autofocus: true,
       onKeyEvent: _onKey,
       child: ListenableBuilder(
-        listenable: Listenable.merge([Library.I, Settings.I, Covers.I]),
+        listenable: Listenable.merge([Library.I, Settings.I, Covers.I, Downloads.I]),
         builder: (context, _) {
           _entries = Library.I.entries();
           ticked.removeWhere((k) => !Library.I.volumes.containsKey(k));
@@ -169,6 +172,204 @@ class LibraryPageState extends State<LibraryPage> {
     );
   }
 
+  /// The phone's selection bar: two short rows instead of one long one.
+  Widget _phoneSelectionBar(List<Volume> vs) => Container(
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+        decoration: BoxDecoration(color: tk.panel, border: Border(top: BorderSide(color: tk.line))),
+        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text('${vs.length} ticked', style: ts(w: FontWeight.w600)),
+            const Spacer(),
+            Btn.ghost('All shown', dense: true,
+                onTap: () => setState(() => ticked.addAll(_entries.expand((x) => x.volumes).map((v) => v.key)))),
+            Btn.ghost('Clear', dense: true, onTap: () => setState(ticked.clear)),
+          ]),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(children: [
+              Btn('Download', icon: Icons.download_outlined, dense: true, onTap: () {
+                Downloads.I.add(vs.map((v) => v.primary));
+                toast('Downloading ${vs.length} book${vs.length == 1 ? '' : 's'}');
+                setState(ticked.clear);
+              }),
+              const SizedBox(width: 6),
+              Btn('Read', icon: Icons.done_all, dense: true, onTap: () {
+                Library.I.markRead(vs, true);
+                toast('Marked ${vs.length} read');
+              }),
+              const SizedBox(width: 6),
+              Btn('Unread', icon: Icons.remove_done, dense: true, onTap: () {
+                Library.I.markRead(vs, false);
+                toast('Marked ${vs.length} unread');
+              }),
+              const SizedBox(width: 6),
+              Btn('Favourite', icon: Icons.favorite_border, dense: true, onTap: () => Library.I.toggleFavourite(vs)),
+              const SizedBox(width: 6),
+              TagMenu(volumes: vs),
+            ]),
+          ),
+        ]),
+      );
+
+  bool _searchOpen = false;
+
+  /// The phone's header: title and buttons, then a row of quick filters.
+  Widget _phoneToolbar(int nFilters) {
+    final s = Settings.I;
+    final f = Library.I.filter;
+    final showSearch = _searchOpen || f.search.isNotEmpty;
+    final hasCollections = Library.I.books.any((b) => b.collection && !b.missing);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 6),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text('Library', style: ts(size: 19, w: FontWeight.w700)),
+          const SizedBox(width: 8),
+          Text('${_entries.length}', style: ts(c: tk.faint, tab: true)),
+          const Spacer(),
+          const SyncButton(),
+          IconBtn(Icons.search, size: 20, active: showSearch, tooltip: 'Search', onTap: () {
+            setState(() => _searchOpen = !showSearch);
+            if (!showSearch) {
+              WidgetsBinding.instance.addPostFrameCallback((_) => Nav.I.searchFocus.requestFocus());
+            } else {
+              search.clear();
+              f.search = '';
+              Library.I.changed();
+            }
+          }),
+          Stack(clipBehavior: Clip.none, children: [
+            IconBtn(Icons.filter_list, size: 20, active: nFilters > 0, tooltip: 'Filters',
+                onTap: () => showDialog(context: context, barrierColor: Colors.black38, builder: (_) => const FiltersPanel())),
+            if (nFilters > 0)
+              Positioned(
+                right: 0,
+                top: -2,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(color: lk.acc, borderRadius: BorderRadius.circular(8)),
+                  child: Text('$nFilters', style: ts(size: 9.5, w: FontWeight.w700, c: lk.onAcc)),
+                ),
+              ),
+          ]),
+          PopupMenuButton<String>(
+            tooltip: 'Sort and view',
+            padding: EdgeInsets.zero,
+            color: tk.panel,
+            onSelected: (v) {
+              if (v.startsWith('sort:')) {
+                final k = v.substring(5);
+                if (s.sort == k) {
+                  s.sortDesc = !s.sortDesc;
+                } else {
+                  s.sort = k;
+                }
+                if (k == 'random') Library.I.reshuffle();
+              } else if (v == 'list') {
+                s.listView = !s.listView;
+              } else if (v == 'continue') {
+                s.showContinue = !s.showContinue;
+              } else if (v == 'collections') {
+                s.showCollections = !s.showCollections;
+                Library.I.changed();
+              } else if (v == 'random') {
+                _random();
+                return;
+              } else if (v == 'bigger' || v == 'smaller') {
+                s.tileSize = (s.tileSize + (v == 'bigger' ? 16 : -16)).clamp(80, 300);
+              } else {
+                s.gridStyle = v;
+                s.listView = false;
+              }
+              s.save();
+            },
+            itemBuilder: (_) => [
+              for (final e in sortKeys.entries)
+                PopupMenuItem(
+                  value: 'sort:${e.key}',
+                  child: Row(children: [
+                    Expanded(child: Text(e.value, style: ts(c: s.sort == e.key ? lk.acc : tk.text))),
+                    if (s.sort == e.key) Icon(s.sortDesc ? Icons.arrow_downward : Icons.arrow_upward, size: 16, color: lk.acc),
+                  ]),
+                ),
+              const PopupMenuDivider(),
+              for (final (k, l) in [('comfortable', 'Comfortable grid'), ('compact', 'Compact grid'), ('cover', 'Covers only')])
+                PopupMenuItem(value: k, child: Text(l, style: ts(c: !s.listView && s.gridStyle == k ? lk.acc : tk.text))),
+              PopupMenuItem(value: 'list', child: Text('List', style: ts(c: s.listView ? lk.acc : tk.text))),
+              PopupMenuItem(value: 'bigger', child: Text('Bigger covers', style: ts())),
+              PopupMenuItem(value: 'smaller', child: Text('Smaller covers', style: ts())),
+              const PopupMenuDivider(),
+              PopupMenuItem(value: 'continue', child: Text('${s.showContinue ? 'Hide' : 'Show'} "Continue reading"', style: ts())),
+              if (hasCollections)
+                PopupMenuItem(value: 'collections', child: Text('${s.showCollections ? 'Hide' : 'Show'} collections', style: ts())),
+              PopupMenuItem(value: 'random', child: Text('Random book', style: ts())),
+            ],
+            child: const IgnorePointer(child: IconBtn(Icons.sort, size: 20, onTap: noop)),
+          ),
+        ]),
+        if (showSearch) ...[
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: Field(
+              controller: search,
+              focusNode: Nav.I.searchFocus,
+              hint: 'Search titles, series, authors, tags',
+              icon: Icons.search,
+              onChanged: (v) {
+                Library.I.filter.search = v;
+                Library.I.changed();
+              },
+            ),
+          ),
+        ],
+        const SizedBox(height: 6),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(children: [
+            Seg<Tri>(
+              value: f.ln,
+              items: const [(Tri.any, 'All'), (Tri.no, 'Books'), (Tri.yes, 'LNs')],
+              onChanged: (v) {
+                f.ln = v;
+                Library.I.changed();
+              },
+            ),
+            const SizedBox(width: 8),
+            Pill('Downloaded', active: f.downloaded == Tri.yes, onTap: () {
+              f.downloaded = f.downloaded == Tri.yes ? Tri.any : Tri.yes;
+              Library.I.changed();
+            }),
+            if (Settings.I.folders.length > 1) ...[
+              const SizedBox(width: 8),
+              Drop<String>(
+                value: f.folders.length == 1 && f.excludeFolders.isEmpty ? f.folders.first : '',
+                width: 150,
+                items: [
+                  ('', f.folders.length > 1 || f.excludeFolders.isNotEmpty ? 'Some folders' : 'All folders'),
+                  for (final lf in Settings.I.folders) (lf.path, _folderName(lf.path)),
+                ],
+                onChanged: (v) {
+                  f.folders = v.isEmpty ? {} : {v};
+                  f.excludeFolders = {};
+                  Library.I.changed();
+                },
+              ),
+            ],
+            if (nFilters > 0) ...[
+              const SizedBox(width: 4),
+              IconBtn(Icons.filter_list_off, tooltip: 'Clear all filters', onTap: () {
+                Library.I.filter = LibFilter()..search = f.search;
+                Library.I.changed();
+              }),
+            ],
+            const SizedBox(width: 6),
+          ]),
+        ),
+      ]),
+    );
+  }
+
   Widget _toolbar() {
     final s = Settings.I;
     final f = Library.I.filter;
@@ -191,7 +392,9 @@ class LibraryPageState extends State<LibraryPage> {
         f.tags.length +
         f.excludeTags.length +
         f.folders.length +
-        f.excludeFolders.length;
+        f.excludeFolders.length +
+        (f.downloaded == Tri.any ? 0 : 1);
+    if (isPhone) return _phoneToolbar(nFilters);
     final hasCollections = Library.I.books.any((b) => b.collection && !b.missing);
     final gap = SizedBox(width: 8);
     return Padding(
@@ -486,6 +689,7 @@ class LibraryPageState extends State<LibraryPage> {
 
   Widget _selectionBar() {
     final vs = tickedVolumes;
+    if (isPhone) return _phoneSelectionBar(vs);
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -520,6 +724,14 @@ class LibraryPageState extends State<LibraryPage> {
           Btn('Favourite', icon: Icons.favorite_border, dense: true, onTap: () => Library.I.toggleFavourite(vs)),
           const SizedBox(width: 6),
           TagMenu(volumes: vs),
+          if (isPhone) ...[
+            const SizedBox(width: 6),
+            Btn('Download', icon: Icons.download_outlined, dense: true, onTap: () {
+              Downloads.I.add(vs.map((v) => v.primary));
+              toast('Downloading ${vs.length} book${vs.length == 1 ? '' : 's'}');
+              setState(ticked.clear);
+            }),
+          ],
           const Spacer(),
           Btn.ghost(
             'Tick all shown',
@@ -708,7 +920,8 @@ class LibraryPageState extends State<LibraryPage> {
         return Hoverable(
           builder: (h) => GestureDetector(
             onTap: () => _open(e),
-            onDoubleTap: () => _read(e),
+            onDoubleTap: isPhone ? null : () => _read(e),
+            onLongPress: isPhone ? () => _tickEntry(e) : null,
             child: Container(
               height: 52,
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
@@ -932,6 +1145,18 @@ class EntryCard extends StatelessWidget {
             if (r > 0 && style != 'cover')
               Positioned(left: 6, bottom: 8, child: badge(Icons.star_rounded, r.toString().replaceAll('.0', ''))),
             if (reads > 1) Positioned(right: 6, bottom: 8, child: badge(null, '×$reads')),
+            // Phone: downloaded (all of a series, or how many).
+            if (isPhone) ...() {
+              final n = e.volumes.where((x) => x.files.any(Downloads.I.isDone)).length;
+              if (n == 0) return const <Widget>[];
+              return [
+                Positioned(
+                  right: 6,
+                  top: fav ? 32 : 6,
+                  child: badge(Icons.download_done, series == null || n == e.volumes.length ? null : '$n'),
+                ),
+              ];
+            }(),
             if (style == 'compact')
               Positioned(
                 left: 0,
@@ -983,7 +1208,9 @@ class EntryCard extends StatelessWidget {
         return Hoverable(
           builder: (h) => GestureDetector(
             onTap: onTap,
-            onDoubleTap: onDouble,
+            // Phones: a double tap would slow down every single tap; a long press ticks.
+            onDoubleTap: isPhone ? null : onDouble,
+            onLongPress: isPhone ? onTick : null,
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
               child: Container(

@@ -15,7 +15,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.sezekai.sable"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -29,11 +28,24 @@ android {
         versionName = flutter.versionName
     }
 
+    // Releases are signed with Sable's own key (kept as a GitHub secret), so each
+    // new version installs over the last one and keeps the phone's library.
+    // Without the key (a local build) the debug key is used.
+    val ks = System.getenv("SABLE_KEYSTORE")
+    signingConfigs {
+        if (ks != null && file(ks).exists()) {
+            create("sable") {
+                storeFile = file(ks)
+                storePassword = System.getenv("SABLE_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("SABLE_KEY_ALIAS") ?: "sable"
+                keyPassword = System.getenv("SABLE_KEY_PASSWORD") ?: System.getenv("SABLE_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (ks != null && file(ks).exists()) signingConfigs.getByName("sable") else signingConfigs.getByName("debug")
         }
     }
 }

@@ -83,6 +83,18 @@ class AppPaths {
     return paths;
   }
 
+  /// The phone: [data] is the app's own storage, [big] its folder on the
+  /// phone's shared storage (covers, downloaded books).
+  static AppPaths phone(String data, String big) {
+    final paths = AppPaths._(big, data, p.join(big, 'Cache'));
+    for (final d in [data, paths.logs, paths.backups]) {
+      try {
+        Directory(d).createSync(recursive: true);
+      } catch (_) {}
+    }
+    return paths;
+  }
+
   /// Creates cache folders. Returns false when the cache drive is missing,
   /// so the caller can say so instead of quietly creating it elsewhere.
   bool ensureCache() {

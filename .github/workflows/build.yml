@@ -85,6 +85,35 @@ jobs:
           if (-not ((Get-Content $report -First 1) -eq 'SELFTEST PASSED')) { Write-Host "Self-test failed (exit $($p.ExitCode))"; exit 1 }
           if ($p.ExitCode -ne 0) { Write-Host "Self-test passed; the test process quit with code $($p.ExitCode)" }
 
+      - name: Self-test phone sync (a PC and the phone app talking to each other)
+        shell: pwsh
+        run: |
+          $base = Join-Path $env:RUNNER_TEMP "sync"
+          $dirs = @{ pcRoot = "$base\pc\root"; pcData = "$base\pc\data"; phRoot = "$base\ph\root"; phData = "$base\ph\data" }
+          $dirs.Values | ForEach-Object { New-Item -ItemType Directory -Force -Path $_ | Out-Null }
+          $exe = "build\windows\x64\runner\Release\Sable.exe"
+          $env:SABLE_PAIR_CODE = "246810"
+          # The PC side.
+          $env:SABLE_ROOT = $dirs.pcRoot; $env:SABLE_DATA = $dirs.pcData; $env:SABLE_SYNC_PEER = "1"; $env:SABLE_PHONE = ""
+          $pc = Start-Process -FilePath $exe -ArgumentList "--selftest" -PassThru
+          Start-Sleep -Seconds 5
+          # The phone side: the same app in phone mode.
+          $env:SABLE_ROOT = $dirs.phRoot; $env:SABLE_DATA = $dirs.phData; $env:SABLE_SYNC_PEER = ""; $env:SABLE_PHONE = "1"
+          $ph = Start-Process -FilePath $exe -ArgumentList "--selftest" -PassThru
+          if (-not $ph.WaitForExit(360000)) { $ph.Kill(); Write-Host "Phone self-test timed out" }
+          if (-not $pc.WaitForExit(360000)) { $pc.Kill(); Write-Host "PC self-test timed out" }
+          $failed = $false
+          foreach ($side in @(@("phone", $dirs.phData), @("pc", $dirs.pcData))) {
+            $report = Join-Path $side[1] "logs\selftest.txt"
+            Write-Host "===== $($side[0]) ====="
+            if (-not (Test-Path $report)) { Write-Host "No report"; $failed = $true; continue }
+            Get-Content $report -TotalCount 60
+            if (-not ((Get-Content $report -First 1) -eq 'SELFTEST PASSED')) { $failed = $true }
+            Get-ChildItem (Join-Path $side[1] "logs") -Filter "selftest-*.png" | ForEach-Object { Copy-Item $_.FullName "selftest-shots\sync-$($side[0])-$($_.Name)" }
+            Copy-Item $report "selftest-shots\sync-$($side[0])-selftest.txt"
+          }
+          if ($failed) { Write-Host "Phone sync self-test failed"; exit 1 }
+
       - name: Package
         shell: pwsh
         run: |
@@ -95,16 +124,91 @@ jobs:
           Compress-Archive -Path "package\Sable" -DestinationPath "Sable-v$v-windows.zip" -CompressionLevel Optimal
           Get-Item "Sable-v$v-windows.zip" | Format-Table Name, Length
 
-      - name: Publish the release
+      - name: Keep the Windows build
         shell: pwsh
+        run: Compress-Archive -Path "selftest-shots\*" -DestinationPath "selftest-screenshots.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            Sable-v${{ steps.ver.outputs.version }}-windows.zip
+            selftest-screenshots.zip
+
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.50.0
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Read the version
+        id: ver
+        run: |
+          v=$(grep -m1 '^version' pubspec.yaml | sed -E 's/^version *: *([0-9.]+).*/\1/')
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+      - name: Signing key
+        env:
+          KEY_B64: ${{ secrets.SABLE_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEY_B64" ]; then
+            echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/sable.jks"
+            echo "SABLE_KEYSTORE=$RUNNER_TEMP/sable.jks" >> "$GITHUB_ENV"
+            echo "Signing with Sable's release key"
+          else
+            echo "::warning::No release key set, so the APK is signed with a throwaway key: it won't install over an earlier Sable APK."
+          fi
+
+      - name: Build the APK (for 64-bit ARM phones, like the Honor Magic V3)
+        env:
+          SABLE_KEYSTORE_PASSWORD: ${{ secrets.SABLE_KEYSTORE_PASSWORD }}
+        run: |
+          flutter build apk --release --target-platform android-arm64 --dart-define=SABLE_VERSION=${{ steps.ver.outputs.version }}
+          cp build/app/outputs/flutter-apk/app-release.apk "Sable-v${{ steps.ver.outputs.version }}-android.apk"
+          ls -la Sable-v*-android.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: Sable-v${{ steps.ver.outputs.version }}-android.apk
+
+  release:
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Publish the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $v = "v${{ steps.ver.outputs.version }}"
-          gh release view $v 2>$null
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "Release $v already exists. Raise the version in pubspec.yaml to publish a new one."
+          v="v${{ needs.windows.outputs.version }}"
+          if gh release view "$v" >/dev/null 2>&1; then
+            echo "Release $v already exists. Raise the version in pubspec.yaml to publish a new one."
             exit 0
-          }
-          Compress-Archive -Path "selftest-shots\*" -DestinationPath "selftest-screenshots.zip"
-          gh release create $v "Sable-${v}-windows.zip" "selftest-screenshots.zip" --title "Sable $v" --notes-file RELEASE_NOTES.md --target $env:GITHUB_SHA
+          fi
+          ls -la out
+          gh release create "$v" out/Sable-${v}-windows.zip out/Sable-${v}-android.apk out/selftest-screenshots.zip \
+            --title "Sable $v" --notes-file RELEASE_NOTES.md --target "$GITHUB_SHA"

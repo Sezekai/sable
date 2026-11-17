@@ -2,7 +2,7 @@
 
 A library and reader for books and light novels, built to feel like Lithium: clean, compact and quick, with an OLED black or Starlight look and gradient accents. Books and light novels live in one library, with series, history, stats, ratings, favourites and tags.
 
-This is stage 1: the complete Windows app. Stage 2 adds the Android app, which syncs with this PC over home WiFi and keeps downloaded books for offline reading.
+There's a Windows app and an Android app. The phone keeps the whole library (covers, history, stats) and syncs with the PC over your home WiFi; books you pick are downloaded to it for reading anywhere.
 
 ## Install and update
 
@@ -13,6 +13,18 @@ This is stage 1: the complete Windows app. Stage 2 adds the Android app, which s
 EPUB and MOBI books are shown with Microsoft Edge WebView2, which comes with Windows 11. If it's ever missing, Sable says so and how to get it.
 
 **Updating:** replace the `App` folder with the new one. Your library, history, settings and covers are kept, because they live outside it.
+
+### The phone app (Android)
+
+1. Download `Sable-vX.Y.Z-android.apk` from the same release onto the phone and open it (allow installing from your browser or files app if Android asks).
+2. On the PC: Sable → Settings → Phone shows a 6-digit pairing code. The first time, Windows asks whether Sable can use the network: allow it for **private** networks (your home WiFi should be set as a private network).
+3. On the phone: Settings → Connection → Connect to your PC. It finds the PC on the same WiFi (or type the PC's address shown on the PC), then type the code.
+
+The phone then brings in the library, all reading records and every cover. **Updating:** install the new APK over the old one; everything on the phone is kept.
+
+**What syncs:** where you are in each book, reading sessions, finished books and read marks, ratings, favourites, tags and bookmarks — both ways. Sync happens when the app opens, when it comes back to the front, after closing a book and every 5 minutes, whenever the PC can be reached (Sable has to be open on the PC). Changes made away from home wait on the phone and go across at the next sync. If both sides changed the same thing, the latest change wins; reading sessions and finishes from both sides are all kept.
+
+**Downloads:** nothing is downloaded by itself. Download a book from its page, or a whole series (all, or only the unread volumes) from the series page, or tick several in the library (long-press) and tap Download. The Downloads tab shows each download with a progress bar, percentage, speed, time taken and time left, and can pause, resume or cancel. A book that isn't downloaded can still be opened while at home: it's read straight from the PC. Downloads never change anything on the PC.
 
 ## Where things live
 
@@ -26,6 +38,9 @@ EPUB and MOBI books are shown with Microsoft Edge WebView2, which comes with Win
 | Book engine (WebView2) data | `%LOCALAPPDATA%\Sable\WebView2\` |
 | Logs and crash logs | `%LOCALAPPDATA%\Sable\logs\` |
 | Database backups (last 7 days) | `%LOCALAPPDATA%\Sable\backups\` |
+| Phone pairing (code, paired phones) | `%LOCALAPPDATA%\Sable\sync.json` |
+| On the phone: library, history, pairing | the app's own storage (removed if the app is uninstalled) |
+| On the phone: covers and downloaded books | `Android/data/com.sezekai.sable/files/Cache/` |
 
 Settings → Storage shows each place with its size, and can open, move or clear it.
 
@@ -92,7 +107,8 @@ Press **K** in the app for the full list.
 
 ## For the developer
 
-- Flutter (Dart) for Windows now and Android in stage 2, sharing one codebase.
+- Flutter (Dart) for Windows and Android, sharing one codebase. `isPhone` (`lib/core/platform.dart`) switches the phone's screens; `SABLE_PHONE=1` runs the phone app on a computer for testing.
+- Sync: `lib/core/sync_server.dart` (PC: a small HTTP server on port 47650 that only answers paired phones, plus discovery on UDP 47651), `sync_client.dart` (phone), `sync_protocol.dart` (the changes the phone sends and how the PC applies them, and the snapshot it sends back), `downloads.dart` (phone downloads).
 - `lib/core/`: database (SQLite), file-name parsing (`parse.dart`), reading EPUB/MOBI/ZIP details and covers (`books.dart`), the library scan, grouping, filters and sorts (`library.dart`), reading sessions (`reading.dart`), and the local server the reader page loads from (`server.dart`).
 - `lib/ui/`: the shell, library, book and series pages, reader (`reader_page.dart`, with `pdf_view.dart` for PDFs), history, stats and settings.
 - `assets/reader/`: the reading page. `sable.js` connects the app to [foliate-js](https://github.com/johnfactotum/foliate-js) (MIT), which lays out EPUB and MOBI books. The page is served from `127.0.0.1` only.

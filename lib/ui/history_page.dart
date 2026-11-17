@@ -3,6 +3,7 @@ import 'package:material_ui/material_ui.dart';
 import '../core/db.dart';
 import '../core/jobs.dart';
 import '../core/library.dart';
+import '../core/platform.dart';
 import 'library_page.dart';
 import 'reader_page.dart';
 import 'widgets.dart';
@@ -85,6 +86,7 @@ class _HistoryPageState extends State<HistoryPage> {
                 children: [
                   Text('History', style: ts(size: 15, w: FontWeight.w700)),
                   const SizedBox(width: 10),
+                  if (!isPhone)
                   Expanded(
                     child: Text('Every time you read: when, for how long, and how far you got.', style: ts(c: tk.sec)),
                   ),
@@ -97,8 +99,9 @@ class _HistoryPageState extends State<HistoryPage> {
                     Expanded(
                       child: Field(hint: 'Search history', icon: Icons.search, onChanged: (v) => setState(() => q = v)),
                     ),
-                    const SizedBox(width: 8),
-                    Btn(
+                    // On the phone the history belongs to the PC, so it's cleared there.
+                    if (!isPhone) const SizedBox(width: 8),
+                    if (!isPhone) Btn(
                       'Clear history',
                       kind: BtnKind.dangerGhost,
                       onTap: () async {
@@ -145,7 +148,47 @@ class _HistoryPageState extends State<HistoryPage> {
     return dateText(at);
   }
 
+  /// The phone: two short lines instead of columns.
+  Widget _phoneRow(_Item it) {
+    final t = it.title;
+    final s = it.session;
+    final what = s == null
+        ? (it.note ?? '')
+        : '${timeText(s.startedAt)} · ${humanHours(s.activeSeconds)} · ${(s.fromPct * 100).floor()}% → ${(s.toPct * 100).floor()}%'
+            '${s.completed ? ' · finished' : ''} · ${s.device}';
+    return GestureDetector(
+      onTap: () => openBook(context, t),
+      onLongPress: s == null
+          ? null
+          : () async {
+              if (await confirm(context, 'Remove this history entry?', 'Only the record of this session is removed.',
+                  confirmLabel: 'Remove entry')) {
+                Db.I.deleteSession(s.id);
+                Library.I.changed();
+              }
+            },
+      child: Container(
+        color: Colors.transparent,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Row(children: [
+          SizedBox(width: 36, height: 52, child: ClipRRect(borderRadius: BorderRadius.circular(3), child: BookCover(book: t, width: 36))),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(t.inSeries ? '${t.cardTitle}${t.volumeText.isEmpty ? '' : ' · ${t.volumeText}'}' : t.displayTitle,
+                  style: ts(w: FontWeight.w600), overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 2),
+              Text(what, style: ts(c: tk.sec, size: 12.5, tab: true), overflow: TextOverflow.ellipsis, maxLines: 2),
+            ]),
+          ),
+          Icon(Icons.play_arrow_rounded, size: 20, color: tk.faint),
+        ]),
+      ),
+    );
+  }
+
   Widget _row(_Item it) {
+    if (isPhone) return _phoneRow(it);
     final t = it.title;
     final s = it.session;
     return Hoverable(

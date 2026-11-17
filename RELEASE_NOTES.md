@@ -1,29 +1,26 @@
-Sable 1.2.1
+Sable 1.3.0 — the phone app
 
-Reader
-- Margins: set the side margins and the top and bottom margins separately.
-- Text colour: pick any colour for the book's text (or go back to the theme's).
-- Moving the mouse shows the controls; when it stops, the controls and the pointer hide again (unless the mouse is over the controls).
-- Space shows the controls and keeps them up until you press Space again or Esc. (Space no longer turns the page; PgDn and → still do.)
-- M opens the controls as a keyboard menu: arrow keys move, Space or Enter choose, M, Esc or a click on the page closes it.
-- Every control at the top now has its name under its icon.
-- PDFs: "Crop borders" trims plain white or black margins around each page (C, or the Crop button at the top).
-- S opens the reading settings.
+Sable now runs on Android too, and syncs with Sable on your PC over your home WiFi.
 
-Everywhere
-- K shows the keyboard shortcuts on every screen, including the reader and over dialogs.
-- App size and reader controls size can be typed exactly, like 103%.
-- Settings show in two columns when the window is wide, maximised or full screen.
+Getting it on the phone
+- Download `Sable-v1.3.0-android.apk` (below) on the phone and open it to install.
+- On the PC: Settings → Phone shows a 6-digit code. If Windows asks whether Sable can use the network, allow it for private networks.
+- On the phone: Settings → Connection → Connect to your PC. It finds the PC by itself (or type the address shown on the PC), then type the code.
 
-History
-- Each entry has a Continue button next to its title, and entries have a faint line between them.
+On the phone
+- The whole library with every cover, the history and stats, all there even away from home.
+- Downloads you choose: a book from its page, a whole series (all, or just the unread volumes), or several ticked books (long-press in the library). Nothing downloads by itself.
+- The Downloads tab shows each download's progress bar, percentage, speed, time so far and time left, with pause, resume and cancel; a strip above the tabs shows it too from anywhere.
+- A "Downloaded" quick filter, and a mark on downloaded covers.
+- Books that aren't downloaded can still be read at home: they're opened straight from the PC (with a progress bar).
+- The reader goes full screen; tap the middle for the controls, the sides (or swipe) to turn pages, and the back gesture steps back like Esc.
 
-Library
-- All / Books / LNs switch next to the Library title.
-- Filter by library folder (LIGHT NOVELS, BOOKS, BOOKS I OWN, BOOK Collections): the folder box next to Filters, or show-only / leave-out in the Filters panel.
-- A clear-all-filters button next to Filters.
-- The mouse wheel scrolls twice as far per notch.
+Sync
+- Reading place, sessions, finished books and read marks, ratings, favourites, tags and bookmarks go both ways.
+- It happens by itself when the phone app opens, comes back to the front, after closing a book, and every 5 minutes, whenever the PC is reachable (Sable open on the PC). Changes made away from home wait and go across later.
+- The latest change wins; reading sessions from both sides are all kept, so the history and stats on both show everything.
 
-Download `Sable-v1.2.1-windows.zip`, then replace the `App` folder in `E:\Pictures\Sable\` with the new one. Your library and settings are kept.
+On the PC
+- Settings → Phone: turn phone sync on or off, the pairing code (each code works once), this PC's address, and the paired phones (with Unpair).
 
-1.2.1 (same day): the side margin is now the real space in pixels at each side of the text (and between two pages), and big margins no longer squeeze the text into a thin strip in a small window (each page keeps at least a column's worth of text); the controls menu hint fits on one line, and the library search box keeps a short hint in narrow windows.
+Download `Sable-v1.3.0-windows.zip` for the PC and replace the `App` folder in `E:\Pictures\Sable\` with the new one. Your library and settings are kept.

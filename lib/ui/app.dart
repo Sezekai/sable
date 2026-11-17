@@ -9,16 +9,18 @@ import 'package:window_manager/window_manager.dart';
 import '../core/jobs.dart';
 import '../core/library.dart';
 import '../core/log.dart';
+import '../core/platform.dart';
 import '../core/settings.dart';
 import 'book_page.dart';
 import 'history_page.dart';
 import 'library_page.dart';
 import 'look.dart';
+import 'phone.dart';
 import 'settings_page.dart';
 import 'stats_page.dart';
 import 'widgets.dart';
 
-enum PageId { library, history, stats, settings }
+enum PageId { library, history, stats, downloads, settings }
 
 /// Where the app is: which screen, which section, what's open.
 class Nav extends ChangeNotifier {
@@ -140,7 +142,11 @@ class Nav extends ChangeNotifier {
   Future<void> toggleFullScreen() async {
     fullScreen = !fullScreen;
     try {
-      await windowManager.setFullScreen(fullScreen);
+      if (isDesktop) {
+        await windowManager.setFullScreen(fullScreen);
+      } else {
+        await SystemChrome.setEnabledSystemUIMode(fullScreen ? SystemUiMode.immersiveSticky : SystemUiMode.edgeToEdge);
+      }
     } catch (_) {}
     notifyListeners();
   }
@@ -151,6 +157,7 @@ class Nav extends ChangeNotifier {
     PageId.library => detail == null ? 'Library' : (detailIsSeries ? 'Series' : 'Book'),
     PageId.history => 'History',
     PageId.stats => 'Stats',
+    PageId.downloads => 'Downloads',
     PageId.settings => 'Settings',
   };
 }
@@ -309,6 +316,7 @@ class _ShellState extends State<Shell> {
 
   @override
   Widget build(BuildContext context) {
+    if (isPhone) return const PhoneShell();
     return Focus(
       focusNode: _focus,
       autofocus: true,
@@ -367,6 +375,8 @@ class _ShellState extends State<Shell> {
         return const HistoryPage();
       case PageId.stats:
         return const StatsPage();
+      case PageId.downloads:
+        return const SettingsPage();
       case PageId.settings:
         return const SettingsPage();
     }

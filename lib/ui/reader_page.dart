@@ -16,9 +16,12 @@ import '../core/log.dart';
 import '../core/paths.dart';
 import '../core/reading.dart';
 import '../core/server.dart';
+import '../core/platform.dart';
 import '../core/settings.dart';
+import '../core/sync_client.dart';
 import 'app.dart';
 import 'look.dart';
+import 'phone.dart';
 import 'pdf_view.dart';
 import 'widgets.dart';
 
@@ -65,25 +68,37 @@ class TocItem {
 
 /// Opens a book full-window over everything.
 Future<void> openBook(BuildContext context, Book b) async {
-  if (b.missing || !File(outerPath(b.path)).existsSync()) {
+  String? file;
+  if (isPhone) {
+    // The phone: the downloaded copy, or the book fetched from the PC now.
+    file = await phoneBookFile(context, b);
+    if (file == null || !context.mounted) return;
+  } else if (b.missing || !File(outerPath(b.path)).existsSync()) {
     toast('That book can\'t be found. Is its drive connected?', ToastKind.error);
     return;
   }
   Nav.I.readerOpen = true;
-  await Navigator.of(context).push(_route(b));
+  if (isPhone) phoneReaderMode(true);
+  await Navigator.of(context).push(_route(b, file));
+  if (isPhone) phoneReaderMode(false);
   Nav.I.readerOpen = false;
   Library.I.changed();
+  // Reading done on the phone goes to the PC straight away when it's reachable.
+  if (isPhone && SyncClient.I.paired) unawaited(SyncClient.I.sync(quiet: true).catchError((_) {}));
 }
 
-PageRoute _route(Book b) => PageRouteBuilder(
-  pageBuilder: (_, _, _) => ReaderPage(book: b),
+PageRoute _route(Book b, String? file) => PageRouteBuilder(
+  pageBuilder: (_, _, _) => ReaderPage(book: b, file: file),
   transitionDuration: const Duration(milliseconds: 160),
   transitionsBuilder: (_, a, _, child) => FadeTransition(opacity: a, child: child),
 );
 
 class ReaderPage extends StatefulWidget {
-  const ReaderPage({super.key, required this.book});
+  const ReaderPage({super.key, required this.book, this.file});
   final Book book;
+
+  /// The file to read, when it isn't [book]'s own path (the phone's copy).
+  final String? file;
   @override
   State<ReaderPage> createState() => ReaderPageState();
 }
@@ -144,7 +159,7 @@ class ReaderPageState extends State<ReaderPage> {
 
   Future<void> _prepare() async {
     try {
-      path = isInZip(book.path) ? await Library.I.extractFromZip(book.path) : book.path;
+      path = widget.file ?? (isInZip(book.path) ? await Library.I.extractFromZip(book.path) : book.path);
       if (!isPdf && !Platform.isWindows && !Platform.isAndroid) {
         error = 'EPUB and MOBI books can be read on Windows and Android.';
       } else if (!isPdf) {
@@ -226,7 +241,8 @@ class ReaderPageState extends State<ReaderPage> {
         _tapMiddle();
         return;
       case 'move':
-        _moved();
+        // Touch screens send a mouse move with every tap: only real mice count.
+        if (!isPhone) _moved();
         return;
       case 'activity':
         tracker.activity();
@@ -335,11 +351,11 @@ class ReaderPageState extends State<ReaderPage> {
       });
       return;
     }
-    if (Nav.I.fullScreen) {
+    if (Nav.I.fullScreen && !isPhone) {
       Nav.I.toggleFullScreen();
       return;
     }
-    Navigator.of(context).maybePop();
+    Navigator.of(context).pop();
   }
 
   Volume? get volume => Library.I.volumeOf(book);
@@ -354,7 +370,13 @@ class ReaderPageState extends State<ReaderPage> {
       toast('This is the last volume', ToastKind.info);
       return;
     }
-    Navigator.of(context).pushReplacement(_route(n.primary));
+    if (isPhone) {
+      phoneBookFile(context, n.primary).then((f) {
+        if (f != null && mounted) Navigator.of(context).pushReplacement(_route(n.primary, f));
+      });
+      return;
+    }
+    Navigator.of(context).pushReplacement(_route(n.primary, null));
   }
 
   void toggleFavourite() {
@@ -510,7 +532,7 @@ class ReaderPageState extends State<ReaderPage> {
     final v = volume;
     final bms = Db.I.bookmarks(book.id);
     return [
-      _Ctl(Icons.arrow_back, 'Back', 'Back to the library (Esc)', () => Navigator.of(context).maybePop()),
+      _Ctl(Icons.arrow_back, 'Back', 'Back to the library (Esc)', () => Navigator.of(context).pop()),
       if (!isPdf)
         _Ctl(
           Icons.search,
@@ -546,11 +568,12 @@ class ReaderPageState extends State<ReaderPage> {
         active: panel == 'style',
         closes: true,
       ),
+      if (!isPhone)
       _Ctl(
         Nav.I.fullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
         'Full screen',
         'Full screen (F)',
-        () => Nav.I.toggleFullScreen().then((_) => windowManager.focus()),
+        () => Nav.I.toggleFullScreen().then((_) => isDesktop ? windowManager.focus() : null),
       ),
     ];
   }
@@ -631,7 +654,7 @@ class ReaderPageState extends State<ReaderPage> {
       case '-' || '_':
         if (!isPdf) changeSize(-1);
       case 'f' || 'f11':
-        Nav.I.toggleFullScreen().then((_) => windowManager.focus());
+        Nav.I.toggleFullScreen().then((_) => isDesktop ? windowManager.focus() : null);
       case 'm':
         toggleMenu();
       case 'h' || 'enter':
@@ -717,7 +740,13 @@ class ReaderPageState extends State<ReaderPage> {
     // Hidden controls can't be under the mouse (their regions don't report leaving).
     if (!chrome) _hover.removeWhere((h) => h != 'panel');
     if (panel == null) _hover.remove('panel');
-    return Focus(
+    return PopScope(
+      // Android's back gesture steps back like Esc: closes what's open, then the book.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) back();
+      },
+      child: Focus(
       focusNode: _focus,
       autofocus: true,
       onKeyEvent: _onKey,
@@ -748,7 +777,7 @@ class ReaderPageState extends State<ReaderPage> {
                   Positioned.fill(
                     child: UiScale(
                       scale: Look.I.readerScale,
-                      child: Stack(
+                      child: SafeArea(child: Stack(
                         children: [
                           if (!chrome && error == null) _statusLine(),
                           if (chrome) _topBar(),
@@ -757,7 +786,7 @@ class ReaderPageState extends State<ReaderPage> {
                           if (endCard) _end(),
                           const ToastLayer(),
                         ],
-                      ),
+                      )),
                     ),
                   ),
                 ],
@@ -765,6 +794,7 @@ class ReaderPageState extends State<ReaderPage> {
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -785,7 +815,7 @@ class ReaderPageState extends State<ReaderPage> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
-              Btn('Back to the library', onTap: () => Navigator.of(context).maybePop()),
+              Btn('Back to the library', onTap: () => Navigator.of(context).pop()),
             ],
           ),
         ),
@@ -938,7 +968,36 @@ class ReaderPageState extends State<ReaderPage> {
       top: 10,
       child: _hoverZone(
         'top',
-        Container(
+        LayoutBuilder(builder: (context, box) {
+          // A narrow screen (a phone): the title on one line, the controls on a
+          // second line that scrolls sideways.
+          if (box.maxWidth < ctls.length * 70 + 220) {
+            return Container(
+              padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+              decoration: _barDeco,
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Row(children: [
+                  _LabelBtn(ctls.first, focused: menu && menuIndex == 0, onTap: () => _tapCtl(0)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(_title, style: ts(w: FontWeight.w600), overflow: TextOverflow.ellipsis, maxLines: 2),
+                      if (chapter.isNotEmpty)
+                        Text(chapter, style: ts(size: 11.5, c: tk.faint), overflow: TextOverflow.ellipsis),
+                    ]),
+                  ),
+                ]),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(children: [
+                    for (var i = 1; i < ctls.length; i++)
+                      _LabelBtn(ctls[i], focused: menu && menuIndex == i, onTap: () => _tapCtl(i)),
+                  ]),
+                ),
+              ]),
+            );
+          }
+          return Container(
           height: 60,
           padding: const EdgeInsets.symmetric(horizontal: 6),
           decoration: _barDeco,
@@ -975,10 +1034,13 @@ class ReaderPageState extends State<ReaderPage> {
               for (var i = 1; i < ctls.length; i++) _LabelBtn(ctls[i], focused: menu && menuIndex == i, onTap: () => _tapCtl(i)),
             ],
           ),
-        ),
+        );
+        }),
       ),
     );
   }
+
+  bool get _narrow => MediaQuery.sizeOf(context).width / Look.I.readerScale < 560;
 
   void _tapCtl(int i) {
     final c = _controls[i];
@@ -1048,9 +1110,11 @@ class ReaderPageState extends State<ReaderPage> {
     };
     return Positioned(
       right: 10,
-      top: chrome ? 78 : 10,
+      top: chrome ? (_narrow ? 130 : 78) : 10,
       bottom: chrome ? 96 : 10,
-      width: 400,
+      // A phone: the panel takes the whole width.
+      left: _narrow ? 10 : null,
+      width: _narrow ? null : 400,
       child: _hoverZone(
         'panel',
         Container(

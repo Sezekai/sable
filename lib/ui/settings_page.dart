@@ -11,8 +11,12 @@ import '../core/jobs.dart';
 import '../core/library.dart';
 import '../core/log.dart';
 import '../core/paths.dart';
+import '../core/downloads.dart';
+import '../core/platform.dart';
 import '../core/settings.dart';
+import '../core/sync_server.dart';
 import 'look.dart';
+import 'phone.dart';
 import 'reader_page.dart';
 import 'widgets.dart';
 
@@ -84,6 +88,15 @@ class _SettingsPageState extends State<SettingsPage> {
             const SizedBox(height: 8),
             Expanded(
               child: _columns([
+                if (isPhone)
+                  _group('Connection', 'Your PC is where the books are. The phone keeps the library, history and the books you download.', [
+                    const PhoneConnection(),
+                  ]),
+                if (!isPhone)
+                  _group('Phone', 'Read on your Android phone too: it keeps the whole library and syncs reading, history, favourites, ratings, tags and bookmarks with this PC over your home WiFi.', [
+                    const _PcPhone(),
+                  ]),
+                if (!isPhone)
                 _group(
                   'Library folders',
                   'Where your books are. Light novel folders treat each folder inside as a series. Collections can be hidden from the library in one click.',
@@ -265,6 +278,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     Settings.I.showCollections = v;
                     Library.I.changed();
                   }, def: _d.showCollections),
+                  if (!isPhone) ...[
                   _check('Watch the folders and add new books by themselves', Settings.I.watchFolders, (v) {
                     Settings.I.watchFolders = v;
                     Library.I.startWatching();
@@ -327,6 +341,13 @@ class _SettingsPageState extends State<SettingsPage> {
                         },
                       ),
                       Btn('Make missing covers', icon: Icons.image_outlined, onTap: Covers.I.queueMissing),
+                    ],
+                  ),
+                  ],
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
                       Btn.ghost(
                         'Reset these library settings',
                         icon: Icons.restart_alt,
@@ -344,9 +365,26 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                   ),
                 ]),
+                if (!isPhone)
                 _group('Storage', 'Everywhere Sable keeps things, and how much space each uses.', [
                   for (final pl in _places()) _storageRow(pl),
                 ]),
+                if (isPhone)
+                  _group('Storage', 'What Sable keeps on this phone.', [
+                    ListenableBuilder(
+                      listenable: Downloads.I,
+                      builder: (_, _) => Text(
+                          'Downloaded books: ${Downloads.I.done.length} · ${humanSize(Downloads.I.usedBytes)}',
+                          style: ts()),
+                    ),
+                    FutureBuilder<int>(
+                      future: _dirSize(AppPaths.I.thumbs),
+                      builder: (_, snap) => Text('Covers: ${snap.hasData ? humanSize(snap.data!) : '…'} (kept for the whole library, so it can be browsed away from the PC)',
+                          style: ts(c: tk.sec, size: 12.5)),
+                    ),
+                    Text('Data: ${AppPaths.I.data}', style: ts(c: tk.faint, size: 12)),
+                    Text('Books and covers: ${AppPaths.I.cache}', style: ts(c: tk.faint, size: 12)),
+                  ]),
                 _group('Reset', 'Each part asks first and says exactly what is cleared. Your files are never deleted.', [
                   Wrap(
                     spacing: 8,
@@ -355,10 +393,12 @@ class _SettingsPageState extends State<SettingsPage> {
                       _reset('Settings', 'All settings go back to their defaults. Your library, history and themes stay.', () {
                         Settings.I.resetToDefaults();
                       }),
+                      if (!isPhone)
                       _reset('Library', 'Sable forgets every book, with its ratings, favourites, tags, bookmarks and history. Your files stay on disk.', () {
                         Db.I.resetLibrary();
                         Library.I.load();
                       }),
+                      if (!isPhone)
                       _reset('History', 'All reading sessions, read counts and reading positions are cleared. Books, ratings, favourites, tags and bookmarks stay.', () {
                         Db.I.resetHistory();
                         Library.I.load();
@@ -369,6 +409,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       _reset('Cover cache', 'Covers are made again when needed.', () async {
                         await _clear(AppPaths.I.thumbs);
                       }),
+                      if (!isPhone)
                       _reset('Book cache', 'Books copied out of ZIPs are removed; they\'re copied again when opened.', () async {
                         await _clear(AppPaths.I.bookCache);
                       }),
@@ -448,7 +489,20 @@ class _SettingsPageState extends State<SettingsPage> {
         : null,
   );
 
-  Widget _row(String label, Widget child, {bool changed = false, VoidCallback? reset}) => Padding(
+  Widget _row(String label, Widget child, {bool changed = false, VoidCallback? reset}) => isPhone
+      // A phone: the name above the setting, which gets the whole width.
+      ? Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: ts(c: tk.sec, size: 12.5)),
+            Row(children: [
+              Flexible(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: child)),
+              const SizedBox(width: 4),
+              _resetBtn(changed, reset),
+            ]),
+          ]),
+        )
+      : Padding(
     padding: const EdgeInsets.symmetric(vertical: 3),
     child: Row(
       children: [
@@ -969,4 +1023,91 @@ class _GroupBox extends StatelessWidget {
   final Widget child;
   @override
   Widget build(BuildContext context) => child;
+}
+
+
+
+/// Settings → Phone, on the PC: the pairing code and the paired phones.
+class _PcPhone extends StatefulWidget {
+  const _PcPhone();
+  @override
+  State<_PcPhone> createState() => _PcPhoneState();
+}
+
+class _PcPhoneState extends State<_PcPhone> {
+  List<String> addresses = [];
+
+  @override
+  void initState() {
+    super.initState();
+    SyncServer.I.addresses().then((a) {
+      if (mounted) setState(() => addresses = a);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: SyncServer.I,
+      builder: (context, _) {
+        final sv = SyncServer.I;
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Switch(value: sv.enabled, onChanged: (v) => sv.setEnabled(v)),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Let my phone sync with this PC over WiFi', style: ts())),
+          ]),
+          if (sv.enabled) ...[
+            const SizedBox(height: 6),
+            Text(sv.problem ?? 'Ready. Sable on the phone finds this PC by itself when both are on the same WiFi.',
+                style: ts(c: sv.problem == null ? tk.sec : tk.danger, size: 12.5)),
+            const SizedBox(height: 12),
+            Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
+              Text('Pairing code', style: ts(c: tk.sec)),
+              const SizedBox(width: 14),
+              SelectableText('${sv.code.substring(0, 3)} ${sv.code.substring(3)}',
+                  style: ts(size: 24, w: FontWeight.w700, mono: true, c: lk.acc)),
+              const SizedBox(width: 14),
+              Btn.ghost('New code', icon: Icons.refresh, dense: true, onTap: sv.newCode),
+            ]),
+            Text('On the phone: Settings → Connection → Connect to your PC, then type this code. Each code works once.',
+                style: ts(c: tk.faint, size: 12)),
+            const SizedBox(height: 8),
+            Text(
+              addresses.isEmpty
+                  ? 'This PC isn\'t on a network right now.'
+                  : 'This PC\'s address: ${addresses.join(', ')} (type it on the phone if it doesn\'t find the PC).',
+              style: ts(c: tk.sec, size: 12.5),
+            ),
+            Text('The first time, Windows may ask whether Sable can use the network: allow it for private networks.',
+                style: ts(c: tk.faint, size: 12)),
+            const SizedBox(height: 12),
+            Text('Paired phones', style: ts(w: FontWeight.w600)),
+            const SizedBox(height: 4),
+            if (sv.phones.isEmpty) Text('None yet.', style: ts(c: tk.faint)),
+            for (final ph in sv.phones)
+              Row(children: [
+                Icon(Icons.phone_android, size: 16, color: tk.sec),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('${ph.name} · last seen ${ph.lastSeen == 0 ? 'never' : '${dateText(ph.lastSeen)} ${timeText(ph.lastSeen)}'}',
+                      style: ts()),
+                ),
+                Btn.ghost('Unpair', dense: true, onTap: () async {
+                  if (await confirm(context, 'Unpair ${ph.name}?',
+                      'It can\'t sync with this PC until it\'s paired again with a new code. Nothing is deleted on either side.',
+                      confirmLabel: 'Unpair')) {
+                    sv.removePhone(ph);
+                  }
+                }),
+              ]),
+            if (sv.lastSyncText.isNotEmpty) ...[
+              const SizedBox(height: 6),
+              Text('Last sync: ${sv.lastSyncText} · ${timeText(sv.lastSyncAt)}', style: ts(c: tk.faint, size: 12)),
+            ],
+          ],
+        ]);
+      },
+    );
+  }
 }

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 
 import 'paths.dart';
+import 'platform.dart';
 
 /// Book or light novel. It's only a field: one library holds both.
 enum Kind {
@@ -128,7 +129,7 @@ class Settings extends ChangeNotifier {
 
   // Library view
   String gridStyle = 'comfortable'; // comfortable | compact | cover
-  double tileSize = 168;
+  double tileSize = isPhone ? 112 : 168;
   bool listView = false;
   String sort = 'lastRead';
   bool sortDesc = true;
@@ -155,7 +156,7 @@ class Settings extends ChangeNotifier {
       mouseInReader = m['mouseInReader'] == 'leave' ? 'leave' : 'pages';
       zipPasswords = ((m['zipPasswords'] as List?) ?? []).whereType<String>().toList();
       gridStyle = m['gridStyle'] as String? ?? gridStyle;
-      tileSize = ((m['tileSize'] as num?)?.toDouble() ?? tileSize).clamp(110, 300);
+      tileSize = ((m['tileSize'] as num?)?.toDouble() ?? tileSize).clamp(isPhone ? 80 : 110, 300);
       listView = m['listView'] as bool? ?? false;
       sort = m['sort'] as String? ?? sort;
       sortDesc = m['sortDesc'] as bool? ?? sortDesc;
@@ -219,7 +220,7 @@ class Settings extends ChangeNotifier {
     pdfCrop = false;
     mouseInReader = 'pages';
     gridStyle = 'comfortable';
-    tileSize = 168;
+    tileSize = isPhone ? 112 : 168;
     listView = false;
     sort = 'lastRead';
     sortDesc = true;

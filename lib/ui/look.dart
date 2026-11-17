@@ -4,6 +4,7 @@ import 'dart:math' as math;
 
 import 'package:material_ui/material_ui.dart';
 
+import '../core/platform.dart';
 import '../core/paths.dart';
 
 /// Colour tokens. Every colour on screen comes from here.
@@ -171,9 +172,10 @@ class Look extends ChangeNotifier {
   double appScale = 1.0;
 
   /// How big the reader's bars, panels and status line are, on top of [appScale].
-  double readerScale = 1.25;
+  double readerScale = defaultReaderScale;
   static const defaultAppScale = 1.0;
-  static const defaultReaderScale = 1.25;
+  /// Phones already draw controls at a touch-friendly size.
+  static final defaultReaderScale = isPhone ? 1.0 : 1.25;
 
   String get accentName => accents[theme] ?? defaultAccentFor[theme] ?? 'Violet → Pink';
 

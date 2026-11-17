@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -11,6 +12,7 @@ import 'settings.dart';
 const _uuid = Uuid();
 String newUid() => _uuid.v4();
 int nowSec() => DateTime.now().millisecondsSinceEpoch ~/ 1000;
+int nowMs() => DateTime.now().millisecondsSinceEpoch;
 
 /// One book file in the library (a book inside a ZIP counts as a file).
 class Book {
@@ -246,6 +248,38 @@ class Db {
   static late Db I;
   final Database raw;
 
+  /// On the phone, every change to reading records is also written to the
+  /// outbox (the `changes` table), which the next sync sends to the PC.
+  bool recordChanges = false;
+
+  String? uidOf(int bookId) {
+    final r = raw.select('SELECT uid FROM books WHERE id=?', [bookId]);
+    return r.isEmpty ? null : r.first['uid'] as String;
+  }
+
+  void _op(String kind, int? bookId, Map<String, Object?> payload) {
+    if (!recordChanges) return;
+    final bu = bookId == null ? null : uidOf(bookId);
+    if (bookId != null && bu == null) return;
+    raw.execute('INSERT INTO changes(uid,at,kind,book_uid,payload) VALUES(?,?,?,?,?)',
+        [newUid(), nowMs(), kind, bu, jsonEncode(payload)]);
+  }
+
+  /// The outbox, oldest first.
+  List<Map<String, Object?>> outbox() => raw
+      .select('SELECT * FROM changes ORDER BY id')
+      .map((r) => {
+            'id': r['id'],
+            'uid': r['uid'],
+            'at': r['at'],
+            'kind': r['kind'],
+            'book': r['book_uid'],
+            'data': jsonDecode(r['payload'] as String? ?? '{}'),
+          })
+      .toList();
+
+  void clearOutbox(int upToId) => raw.execute('DELETE FROM changes WHERE id <= ?', [upToId]);
+
   static Db open(String path) {
     Directory(p.dirname(path)).createSync(recursive: true);
     final d = sqlite3.open(path);
@@ -338,6 +372,14 @@ PRAGMA user_version = 1;
       raw.execute('UPDATE books SET missing=? WHERE id=?', [missing ? 1 : 0, id]);
 
   void updateReading(Book b) {
+    _op('state', b.id, {
+      'rating': b.rating,
+      'favourite': b.favourite,
+      'position': b.position,
+      'progress': b.progress,
+      'last_read_at': b.lastReadAt,
+      'manual_read': b.manualRead,
+    });
     raw.execute('''UPDATE books SET rating=?, favourite=?, position=?, progress=?, last_read_at=?,
       first_completed_at=?, last_completed_at=?, read_count=?, time_spent=?, manual_read=?, updated_at=?
       WHERE id=?''', [
@@ -347,6 +389,13 @@ PRAGMA user_version = 1;
   }
 
   void updateEdits(Book b) {
+    _op('edits', b.id, {
+      'user_title': b.userTitle,
+      'user_author': b.userAuthor,
+      'user_series': b.userSeries,
+      'user_volume': b.userVolume,
+      'user_kind': b.userKind,
+    });
     raw.execute('''UPDATE books SET user_title=?, user_author=?, user_series=?, user_volume=?, user_kind=?,
       updated_at=? WHERE id=?''', [b.userTitle, b.userAuthor, b.userSeries, b.userVolume, b.userKind, nowSec(), b.id]);
   }
@@ -362,22 +411,41 @@ PRAGMA user_version = 1;
     required double toPct,
     required int pagesRead,
     required bool completed,
-    String device = 'PC',
-    String source = 'pc',
+    String? device,
+    String? source,
   }) {
+    device ??= recordChanges ? 'Phone' : 'PC';
+    source ??= recordChanges ? 'phone' : 'pc';
+    final uid = newUid();
+    _op('session', bookId, {
+      'uid': uid,
+      'started_at': startedAt,
+      'ended_at': endedAt,
+      'active_seconds': activeSeconds,
+      'from_pct': fromPct,
+      'to_pct': toPct,
+      'pages_read': pagesRead,
+      'completed': completed,
+      'device': device,
+    });
     raw.execute(
         '''INSERT INTO sessions(uid,book_id,started_at,ended_at,active_seconds,from_pct,to_pct,pages_read,
         completed,device,source) VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
-        [newUid(), bookId, startedAt, endedAt, activeSeconds, fromPct, toPct, pagesRead, completed ? 1 : 0, device, source]);
+        [uid, bookId, startedAt, endedAt, activeSeconds, fromPct, toPct, pagesRead, completed ? 1 : 0, device, source]);
   }
 
-  void addCompletion(int bookId, int at, {bool manual = false, String source = 'pc'}) {
+  void addCompletion(int bookId, int at, {bool manual = false, String? source}) {
+    source ??= recordChanges ? 'phone' : 'pc';
+    final uid = newUid();
+    _op('completion', bookId, {'uid': uid, 'at': at, 'manual': manual});
     raw.execute('INSERT INTO completions(uid,book_id,at,manual,source) VALUES(?,?,?,?,?)',
-        [newUid(), bookId, at, manual ? 1 : 0, source]);
+        [uid, bookId, at, manual ? 1 : 0, source]);
   }
 
-  void removeManualCompletions(int bookId) =>
-      raw.execute('DELETE FROM completions WHERE book_id=? AND manual=1', [bookId]);
+  void removeManualCompletions(int bookId) {
+    _op('uncomplete', bookId, {});
+    raw.execute('DELETE FROM completions WHERE book_id=? AND manual=1', [bookId]);
+  }
 
   List<ReadingSession> sessions({int? bookId, int? since}) {
     final where = <String>[];
@@ -412,7 +480,11 @@ PRAGMA user_version = 1;
       .map((r) => (r['book_id'] as int, r['at'] as int, (r['manual'] as int? ?? 0) == 1))
       .toList();
 
-  void deleteSession(int id) => raw.execute('DELETE FROM sessions WHERE id=?', [id]);
+  void deleteSession(int id) {
+    final r = raw.select('SELECT uid, book_id FROM sessions WHERE id=?', [id]);
+    if (r.isNotEmpty) _op('session_del', r.first['book_id'] as int, {'uid': r.first['uid']});
+    raw.execute('DELETE FROM sessions WHERE id=?', [id]);
+  }
 
   // ---------- tags ----------
 
@@ -423,13 +495,27 @@ PRAGMA user_version = 1;
 
   Tag createTag(String name, int color) {
     final idx = raw.select('SELECT COALESCE(MAX(sort_index),0)+1 AS n FROM tags').first['n'] as int;
+    _op('tag_new', null, {'name': name, 'color': color});
     raw.execute('INSERT INTO tags(name,color,sort_index) VALUES(?,?,?)', [name, color, idx]);
     return Tag(raw.lastInsertRowId, name, color, idx);
   }
 
-  void updateTag(Tag t) =>
-      raw.execute('UPDATE tags SET name=?, color=?, sort_index=? WHERE id=?', [t.name, t.color, t.sortIndex, t.id]);
-  void deleteTag(int id) => raw.execute('DELETE FROM tags WHERE id=?', [id]);
+  String? _tagName(int id) {
+    final r = raw.select('SELECT name FROM tags WHERE id=?', [id]);
+    return r.isEmpty ? null : r.first['name'] as String;
+  }
+
+  void updateTag(Tag t) {
+    final old = _tagName(t.id);
+    if (old != null) _op('tag_edit', null, {'old': old, 'name': t.name, 'color': t.color, 'sort': t.sortIndex});
+    raw.execute('UPDATE tags SET name=?, color=?, sort_index=? WHERE id=?', [t.name, t.color, t.sortIndex, t.id]);
+  }
+
+  void deleteTag(int id) {
+    final old = _tagName(id);
+    if (old != null) _op('tag_del', null, {'name': old});
+    raw.execute('DELETE FROM tags WHERE id=?', [id]);
+  }
 
   /// book id -> tag ids
   Map<int, Set<int>> tagMap() {
@@ -441,6 +527,9 @@ PRAGMA user_version = 1;
   }
 
   void addToTag(int tagId, Iterable<int> bookIds) {
+    if (recordChanges) {
+      _op('tag_add', null, {'name': _tagName(tagId), 'books': [for (final id in bookIds) ?uidOf(id)]});
+    }
     var pos = raw.select('SELECT COALESCE(MAX(position),0) AS n FROM book_tags WHERE tag_id=?', [tagId]).first['n'] as int;
     final st = raw.prepare('INSERT OR IGNORE INTO book_tags(tag_id,book_id,position) VALUES(?,?,?)');
     for (final id in bookIds) {
@@ -450,6 +539,9 @@ PRAGMA user_version = 1;
   }
 
   void removeFromTag(int tagId, Iterable<int> bookIds) {
+    if (recordChanges) {
+      _op('tag_remove', null, {'name': _tagName(tagId), 'books': [for (final id in bookIds) ?uidOf(id)]});
+    }
     for (final id in bookIds) {
       raw.execute('DELETE FROM book_tags WHERE tag_id=? AND book_id=?', [tagId, id]);
     }
@@ -463,11 +555,18 @@ PRAGMA user_version = 1;
           (r['pct'] as num?)?.toDouble() ?? 0, r['at'] as int))
       .toList();
 
-  void addBookmark(int bookId, String position, String label, double pct) => raw.execute(
-      'INSERT INTO bookmarks(uid,book_id,position,label,pct,at) VALUES(?,?,?,?,?,?)',
-      [newUid(), bookId, position, label, pct, nowSec()]);
+  void addBookmark(int bookId, String position, String label, double pct) {
+    final uid = newUid(), at = nowSec();
+    _op('bookmark_add', bookId, {'uid': uid, 'position': position, 'label': label, 'pct': pct, 'at': at});
+    raw.execute('INSERT INTO bookmarks(uid,book_id,position,label,pct,at) VALUES(?,?,?,?,?,?)',
+        [uid, bookId, position, label, pct, at]);
+  }
 
-  void deleteBookmark(int id) => raw.execute('DELETE FROM bookmarks WHERE id=?', [id]);
+  void deleteBookmark(int id) {
+    final r = raw.select('SELECT uid, book_id FROM bookmarks WHERE id=?', [id]);
+    if (r.isNotEmpty) _op('bookmark_del', r.first['book_id'] as int, {'uid': r.first['uid']});
+    raw.execute('DELETE FROM bookmarks WHERE id=?', [id]);
+  }
 
   // ---------- maintenance ----------
 

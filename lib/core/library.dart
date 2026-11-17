@@ -905,10 +905,13 @@ class Covers extends ChangeNotifier {
     return f.existsSync() ? f : null;
   }
 
+  /// After two unclean exits in a row, covers aren't made in the background.
+  bool safeMode = false;
+
   /// Remakes covers that are missing (for example after the cache was cleared).
   void queueMissing() {
     const name = 'Making covers';
-    if (Jobs.I.isQueued(name)) return;
+    if (safeMode || Jobs.I.isQueued(name)) return;
     final todo = Library.I.books.where((b) => !b.missing && cached(b) == null).toList();
     if (todo.isEmpty) return;
     Jobs.I.add(Job(name, (job) async {

@@ -71,8 +71,9 @@ Future<void> main(List<String> args) async {
   final safeMode = unclean >= 2;
   if (unclean >= 1) _reportNativeCrash();
   if (safeMode) {
-    AppLog.I.warn('Sable didn\'t close properly twice in a row, so folder watching is off for this run. '
-        'Turn it back on in Settings → Library.');
+    AppLog.I.warn('Sable didn\'t close properly twice in a row, so folder watching and background cover making '
+        'are off for this run. They come back next time Sable starts after closing normally.');
+    Covers.I.safeMode = true;
   }
 
   Db.I = Db.open(AppPaths.I.db);
@@ -133,6 +134,14 @@ Future<void> main(List<String> args) async {
     Library.I.scan();
     Library.I.startWatching();
     unawaited(_trimBookCache());
+    // A heartbeat in the log file: memory and what's running, every 30 seconds,
+    // so the log shows what Sable was doing if it ever stops unexpectedly.
+    Timer.periodic(const Duration(seconds: 30), (_) {
+      final j = Jobs.I.current;
+      AppLog.I.fileOnly('Heartbeat · memory ${ProcessInfo.currentRss ~/ (1024 * 1024)} MB'
+          '${j == null ? ' · idle' : ' · ${j.name} ${j.done}/${j.total ?? '?'}'}'
+          '${Nav.I.readerOpen ? ' · reading' : ' · ${Nav.I.screenName}'}');
+    });
   });
 }
 
@@ -194,12 +203,28 @@ void _reportNativeCrash() {
         .toList()
       ..sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
     if (files.isEmpty) {
+      _previousRunTail();
       AppLog.I.warn('Sable didn\'t close properly last time, and left no crash report.');
       return;
     }
     final f = files.first;
+    _previousRunTail();
     if (DateTime.now().difference(f.statSync().modified).inDays > 2) return;
     AppLog.I.warn('Sable stopped unexpectedly last time. Report: ${f.path}\n${f.readAsStringSync().trim()}');
+  } catch (_) {}
+}
+
+/// The end of the previous run's log, copied into this one after a crash.
+void _previousRunTail() {
+  try {
+    final prev = AppLog.I.previousFile;
+    if (prev == null) return;
+    final lines = File(prev).readAsLinesSync();
+    AppLog.I.fileOnly('--- last lines of the previous run (${p.basename(prev)}) ---');
+    for (final l in lines.skip(lines.length > 40 ? lines.length - 40 : 0)) {
+      AppLog.I.fileOnly('  $l');
+    }
+    AppLog.I.fileOnly('--- end of the previous run ---');
   } catch (_) {}
 }
 
@@ -315,6 +340,18 @@ Future<void> _runSelftest() async {
     check(epub.textBytes > 10000, 'book length measured (${epub.length} pages)');
     await Future<void>.delayed(const Duration(seconds: 1));
     await _screenshot('library');
+
+    // What crashed on Windows: accessibility on, the library grid changing fast.
+    for (var i = 0; i < 40; i++) {
+      Settings.I.tileSize = i.isEven ? 110 : 300;
+      Settings.I.save();
+      Library.I.changed();
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+    }
+    Settings.I.tileSize = 168;
+    Settings.I.save();
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    check(true, 'survived rapid grid resizing with accessibility on');
 
     // Book and series pages.
     final s = Library.I.entries().whereType<SeriesEntry>().first;

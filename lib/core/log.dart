@@ -11,8 +11,11 @@ class AppLog extends ChangeNotifier {
   static final AppLog I = AppLog._();
 
   final List<String> lines = [];
-  IOSink? _sink;
+  RandomAccessFile? _file;
   String? logDir;
+
+  /// The log of the run before this one (to look back after a crash).
+  String? previousFile;
 
   /// Set when an error is logged, so the shell can open the drawer.
   int errorCount = 0;
@@ -27,6 +30,7 @@ class AppLog extends ChangeNotifier {
           .where((f) => p.basename(f.path).startsWith('run-'))
           .toList()
         ..sort((a, b) => b.path.compareTo(a.path));
+      previousFile = old.isEmpty ? null : old.first.path;
       for (final f in old.skip(5)) {
         try {
           f.deleteSync();
@@ -37,7 +41,7 @@ class AppLog extends ChangeNotifier {
           .replaceAll(':', '-')
           .split('.')
           .first;
-      _sink = File(p.join(dir, 'run-$stamp.txt')).openWrite();
+      _file = File(p.join(dir, 'run-$stamp.txt')).openSync(mode: FileMode.append);
     } catch (_) {}
   }
 
@@ -46,7 +50,7 @@ class AppLog extends ChangeNotifier {
   void error(String msg, [Object? e, StackTrace? st]) {
     errorCount++;
     _add('ERROR', e == null ? msg : '$msg: $e');
-    if (st != null) _sink?.writeln(st.toString());
+    if (st != null) _write(st.toString());
   }
 
   void _add(String level, String msg) {
@@ -55,7 +59,7 @@ class AppLog extends ChangeNotifier {
     final line = '${two(t.hour)}:${two(t.minute)}:${two(t.second)}  $level  $msg';
     lines.add(line);
     if (lines.length > 3000) lines.removeRange(0, lines.length - 3000);
-    _sink?.writeln(line);
+    _write(line);
     if (kDebugMode) stderr.writeln(line);
     _notify();
   }
@@ -92,9 +96,23 @@ class AppLog extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Written straight to the file (no buffering), so the last lines survive a crash.
+  void _write(String text) {
+    try {
+      _file?.writeStringSync('$text\n');
+    } catch (_) {}
+  }
+
+  /// Only to the file: detail that would clutter the log drawer.
+  void fileOnly(String msg) {
+    final t = DateTime.now();
+    String two(int n) => n.toString().padLeft(2, '0');
+    _write('${two(t.hour)}:${two(t.minute)}:${two(t.second)}  INFO  $msg');
+  }
+
   Future<void> flush() async {
     try {
-      await _sink?.flush();
+      _file?.flushSync();
     } catch (_) {}
   }
 }

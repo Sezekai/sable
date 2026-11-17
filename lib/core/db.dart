@@ -65,6 +65,9 @@ class Book {
   int timeSpent;
   bool manualRead;
 
+  /// Open in the reader on this device right now (not saved).
+  bool reading = false;
+
   Book({
     required this.id,
     required this.uid,

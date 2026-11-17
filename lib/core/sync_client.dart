@@ -222,6 +222,8 @@ class SyncClient extends ChangeNotifier {
   Future<void> sync({bool quiet = false}) async {
     if (!paired || syncing) return;
     if (Jobs.I.isQueued(syncName)) return;
+    // Not while a book is open: it syncs as soon as the book is closed.
+    if (quiet && Library.I.books.any((b) => b.reading)) return;
     final done = Completer<void>();
     Jobs.I.add(Job(syncName, (job) async {
       try {

@@ -286,6 +286,43 @@ class Library extends ChangeNotifier {
     changed();
   }
 
+  /// Reading records changed in the database (a sync from the phone): copied
+  /// into the books already in memory, so a book open in the reader keeps the
+  /// phone's changes when it saves its own.
+  void refreshReading() {
+    for (final r in Db.I.books()) {
+      final b = _byId[r.id];
+      if (b == null) {
+        _books.add(r);
+        _byId[r.id] = r;
+        continue;
+      }
+      b
+        ..rating = r.rating
+        ..favourite = r.favourite
+        ..lastReadAt = r.lastReadAt
+        ..firstCompletedAt = r.firstCompletedAt
+        ..lastCompletedAt = r.lastCompletedAt
+        ..readCount = r.readCount
+        ..timeSpent = r.timeSpent
+        ..manualRead = r.manualRead
+        ..userTitle = r.userTitle
+        ..userAuthor = r.userAuthor
+        ..userSeries = r.userSeries
+        ..userVolume = r.userVolume
+        ..userKind = r.userKind;
+      // The place in the book: unless it's being read here right now.
+      if (!b.reading) {
+        b
+          ..position = r.position
+          ..progress = r.progress;
+      }
+    }
+    _tags = Db.I.tags();
+    _tagMap = Db.I.tagMap();
+    changed();
+  }
+
   void reloadTags() {
     _tags = Db.I.tags();
     _tagMap = Db.I.tagMap();

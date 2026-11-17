@@ -84,7 +84,10 @@ Future<void> openBook(BuildContext context, Book b) async {
   Nav.I.readerOpen = false;
   Library.I.changed();
   // Reading done on the phone goes to the PC straight away when it's reachable.
-  if (isPhone && SyncClient.I.paired) unawaited(SyncClient.I.sync(quiet: true).catchError((_) {}));
+  // (Just after the reader has closed and saved the session.)
+  if (isPhone && SyncClient.I.paired) {
+    unawaited(Future<void>.delayed(const Duration(milliseconds: 900), () => SyncClient.I.sync(quiet: true)).catchError((_) {}));
+  }
 }
 
 PageRoute _route(Book b, String? file) => PageRouteBuilder(

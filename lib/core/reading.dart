@@ -10,6 +10,7 @@ import 'settings.dart';
 class ReadTracker {
   ReadTracker(this.book) {
     startedAt = nowSec();
+    book.reading = true;
     fromPct = book.progress;
     lastPct = book.progress;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
@@ -69,6 +70,7 @@ class ReadTracker {
     if (_closed) return;
     _closed = true;
     _ticker.cancel();
+    book.reading = false;
     final ended = nowSec();
     // When a finished book is closed at its end, the next read starts it again from the top.
     if (completed && lastPct >= 0.995) {

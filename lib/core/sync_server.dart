@@ -253,10 +253,7 @@ class SyncServer extends ChangeNotifier {
           final m = await _json(req);
           final ops = ((m['ops'] as List?) ?? []).whereType<Map>().map((x) => x.cast<String, dynamic>()).toList();
           final n = ops.isEmpty ? 0 : applyOps(Db.I, ops);
-          if (ops.isNotEmpty) {
-            Library.I.load();
-            Library.I.changed();
-          }
+          if (ops.isNotEmpty) Library.I.refreshReading();
           lastSyncAt = nowSec();
           lastSyncText = '${ph.name} sent ${ops.length} change${ops.length == 1 ? '' : 's'}';
           if (ops.isNotEmpty) AppLog.I.info('Phone sync: ${ph.name} sent ${ops.length} changes, $n applied');

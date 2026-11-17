@@ -34,10 +34,11 @@ const fontFaces = () => `
 const bookCSS = () => {
     const fam = fontStack(style.font)
     const own = style.publisherStyles
+    const fg = style.textColor || theme.fg
     return `
 @namespace epub "http://www.idpf.org/2007/ops";
 ${fontFaces()}
-html { color-scheme: dark; color: ${theme.fg} !important; background: transparent !important; }
+html { color-scheme: dark; color: ${fg} !important; background: transparent !important; }
 html, body { font-size: ${style.size}px !important; }
 body * { color: inherit !important; background-color: transparent !important; border-color: ${theme.muted} !important; }
 a:link, a:visited { color: ${theme.link} !important; }
@@ -90,9 +91,13 @@ const applyLayout = () => {
     r.setAttribute('flow', style.flow === 'scrolled' ? 'scrolled' : 'paginated')
     r.setAttribute('max-column-count', String(cols))
     r.setAttribute('max-inline-size', cols === 2 ? `${Math.max(320, Math.floor(w / 2))}px` : `${Math.max(420, Math.min(780, w))}px`)
-    const gap = Math.max(2, Math.min(30, (style.margin * 2) / w * 100 * (cols === 2 ? 1 : 1)))
+    // Left and right margins set the gap at the sides (and between two pages);
+    // top and bottom margins set the space above and below the text.
+    const mx = style.marginX ?? style.margin ?? 48
+    const my = style.marginY ?? 44
+    const gap = Math.max(1, Math.min(40, (mx * 2) / w * 100))
     r.setAttribute('gap', `${gap.toFixed(1)}%`)
-    r.setAttribute('margin', '44px')
+    r.setAttribute('margin', `${Math.round(my)}px`)
     if (style.animate) r.setAttribute('animated', '')
     else r.removeAttribute('animated')
 }
@@ -124,6 +129,8 @@ const onDocClick = e => {
 }
 
 const zone = x => {
+    // While the app's control menu is open, a click on the page just closes it.
+    if (menuOpen) { post('tap'); return }
     if (x < 0.3) view.goLeft()
     else if (x > 0.7) view.goRight()
     else post('tap')
@@ -142,11 +149,17 @@ const onKey = e => {
     }
     const tag = e.target?.tagName
     if (tag === 'INPUT' || tag === 'TEXTAREA') return
+    // The app's control menu is driven by the keyboard: keys go to the app only.
+    if (menuOpen) {
+        if (pageKeys.has(e.key) || e.key === 'Enter') e.preventDefault()
+        post('key', { key: e.key, ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey })
+        return
+    }
     if (style.flow === 'scrolled' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) smoothScroll(e.key === 'ArrowDown' ? 100 : -100)
     else if (e.key === 'ArrowLeft') view.goLeft()
     else if (e.key === 'ArrowRight') view.goRight()
     else if (e.key === 'PageUp') view.prev()
-    else if (e.key === 'PageDown' || e.key === ' ') view.next()
+    else if (e.key === 'PageDown') view.next()
     else if (e.key === 'Home') goChapterEdge(false)
     else if (e.key === 'End') goChapterEdge(true)
     if (pageKeys.has(e.key)) e.preventDefault()
@@ -379,6 +392,8 @@ const onLoad = ({ detail: { doc } }) => {
     doc.addEventListener('keydown', onKey)
     doc.addEventListener('wheel', onWheel, { passive: false })
     doc.addEventListener('mouseup', onMouseButton)
+    doc.addEventListener('mousemove', onMove, { passive: true })
+    applyCursor(doc)
     doc.addEventListener('auxclick', e => { if (e.button === 3 || e.button === 4) e.preventDefault() })
     fitImages(doc)
 }
@@ -389,6 +404,37 @@ const flattenToc = (items, level = 0, out = []) => {
         if (it.subitems?.length) flattenToc(it.subitems, level + 1, out)
     }
     return out
+}
+
+// ---------- the mouse and the app's controls ----------
+
+// Moving the mouse tells the app (it shows the controls); the app hides the
+// pointer again when the mouse stops.
+let menuOpen = false, lastMove = 0, cursorHidden = false, lastX = -1, lastY = -1
+const onMove = e => {
+    // Only real movement (pages being laid out under a still mouse also send mousemove).
+    if (Math.abs(e.screenX - lastX) + Math.abs(e.screenY - lastY) < 3) return
+    lastX = e.screenX
+    lastY = e.screenY
+    const now = Date.now()
+    if (now - lastMove < 150) return
+    lastMove = now
+    post('move')
+}
+const cursorCSS = '*, *::before, *::after { cursor: none !important; }'
+const applyCursor = doc => {
+    let el = doc.getElementById('sable-nocursor')
+    if (cursorHidden && !el) {
+        el = doc.createElement('style')
+        el.id = 'sable-nocursor'
+        el.textContent = cursorCSS
+        ;(doc.head ?? doc.documentElement).append(el)
+    } else if (!cursorHidden && el) el.remove()
+}
+const setCursor = hidden => {
+    cursorHidden = hidden
+    applyCursor(document)
+    for (const c of view?.renderer?.getContents?.() ?? []) if (c.doc) applyCursor(c.doc)
 }
 
 // ---------- commands from the app ----------
@@ -406,6 +452,8 @@ window.sable = {
     setStyle: s => { style = { ...style, ...s }; applyStyle() },
     setTheme: t => { theme = { ...theme, ...t }; applyTheme(); applyStyle() },
     closeLightbox,
+    setMenu: open => { menuOpen = !!open },
+    setCursor,
     async search(q) {
         const run = ++searchRun
         view.clearSearch()
@@ -429,6 +477,12 @@ window.sable = {
 }
 
 window.addEventListener('keydown', onKey)
+window.addEventListener('mousemove', onMove, { passive: true })
+// Clicks on the margins around the text (outside the book's pages) work like clicks on the page.
+document.addEventListener('click', e => {
+    if (e.target?.closest?.('#lightbox') || isInteractive(e.target)) return
+    zone(e.clientX / window.innerWidth)
+})
 window.addEventListener('wheel', onWheel, { passive: false })
 window.addEventListener('mouseup', e => onMouseButton(e))
 window.addEventListener('auxclick', e => { if (e.button === 3 || e.button === 4) e.preventDefault() })

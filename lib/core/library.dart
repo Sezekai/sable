@@ -32,6 +32,10 @@ class LibFilter {
   Set<String> excludeAuthors = {};
   Set<int> tags = {};
   Set<int> excludeTags = {};
+
+  /// Library folders (their paths) to show only, or to leave out.
+  Set<String> folders = {};
+  Set<String> excludeFolders = {};
   Tri ratingRange = Tri.any;
   double minRating = 0.5;
   double maxRating = 5;
@@ -56,35 +60,39 @@ class LibFilter {
       excludeAuthors.isEmpty &&
       tags.isEmpty &&
       excludeTags.isEmpty &&
+      folders.isEmpty &&
+      excludeFolders.isEmpty &&
       ratingRange == Tri.any &&
       readCount == Tri.any &&
       lengthRange == Tri.any &&
       readIn == Tri.any;
 
   Map<String, dynamic> toJson() => {
-        'search': search,
-        'read': read.index,
-        'inProgress': inProgress.index,
-        'favourite': favourite.index,
-        'rated': rated.index,
-        'series': series.index,
-        'ln': ln.index,
-        'pdf': pdf.index,
-        'authors': authors.toList(),
-        'excludeAuthors': excludeAuthors.toList(),
-        'tags': tags.toList(),
-        'excludeTags': excludeTags.toList(),
-        'ratingRange': ratingRange.index,
-        'minRating': minRating,
-        'maxRating': maxRating,
-        'readCount': readCount.index,
-        'readCountMin': readCountMin,
-        'lengthRange': lengthRange.index,
-        'minLength': minLength,
-        'maxLength': maxLength,
-        'readIn': readIn.index,
-        'readInDays': readInDays,
-      };
+    'search': search,
+    'read': read.index,
+    'inProgress': inProgress.index,
+    'favourite': favourite.index,
+    'rated': rated.index,
+    'series': series.index,
+    'ln': ln.index,
+    'pdf': pdf.index,
+    'authors': authors.toList(),
+    'excludeAuthors': excludeAuthors.toList(),
+    'tags': tags.toList(),
+    'excludeTags': excludeTags.toList(),
+    'folders': folders.toList(),
+    'excludeFolders': excludeFolders.toList(),
+    'ratingRange': ratingRange.index,
+    'minRating': minRating,
+    'maxRating': maxRating,
+    'readCount': readCount.index,
+    'readCountMin': readCountMin,
+    'lengthRange': lengthRange.index,
+    'minLength': minLength,
+    'maxLength': maxLength,
+    'readIn': readIn.index,
+    'readInDays': readInDays,
+  };
 
   static LibFilter fromJson(Map m) {
     Tri t(String k) => Tri.values[((m[k] as int?) ?? 0).clamp(0, 2)];
@@ -101,6 +109,8 @@ class LibFilter {
       ..excludeAuthors = ((m['excludeAuthors'] as List?) ?? []).cast<String>().toSet()
       ..tags = ((m['tags'] as List?) ?? []).cast<int>().toSet()
       ..excludeTags = ((m['excludeTags'] as List?) ?? []).cast<int>().toSet()
+      ..folders = ((m['folders'] as List?) ?? []).cast<String>().toSet()
+      ..excludeFolders = ((m['excludeFolders'] as List?) ?? []).cast<String>().toSet()
       ..ratingRange = t('ratingRange')
       ..minRating = (m['minRating'] as num?)?.toDouble() ?? 0.5
       ..maxRating = (m['maxRating'] as num?)?.toDouble() ?? 5
@@ -164,7 +174,7 @@ class Volume {
     final seen = <String>{};
     return [
       for (final f in files)
-        if (seen.add(f.format)) f
+        if (seen.add(f.format)) f,
     ];
   }
 
@@ -329,13 +339,26 @@ class Library extends ChangeNotifier {
 
   // ---------------- queries ----------------
 
+  /// The library folder (as set in Settings) that [path] is in, or ''.
+  String rootOf(String path) {
+    final low = path.toLowerCase().replaceAll('/', '\\');
+    var best = '';
+    for (final lf in Settings.I.folders) {
+      final r = lf.path.toLowerCase().replaceAll('/', '\\');
+      final prefix = r.endsWith('\\') ? r : '$r\\';
+      if (low.startsWith(prefix) && lf.path.length > best.length) best = lf.path;
+    }
+    return best;
+  }
+
   bool matches(Volume v, LibFilter f, {bool inSeries = false}) {
     final b = v.any;
     if (f.search.isNotEmpty) {
       final tagNames = tagsOfVolume(v).map((id) => tagById(id)?.name ?? '').join(' ');
-      final hay = '${b.displayTitle} ${b.displaySeries ?? ''} ${b.displayAuthor ?? ''} ${b.edition} '
-              '${v.files.map((x) => x.fileName).join(' ')} $tagNames'
-          .toLowerCase();
+      final hay =
+          '${b.displayTitle} ${b.displaySeries ?? ''} ${b.displayAuthor ?? ''} ${b.edition} '
+                  '${v.files.map((x) => x.fileName).join(' ')} $tagNames'
+              .toLowerCase();
       for (final word in f.search.toLowerCase().split(RegExp(r'\s+'))) {
         if (word.isNotEmpty && !hay.contains(word)) return false;
       }
@@ -348,6 +371,11 @@ class Library extends ChangeNotifier {
     if (!tri(f.series, inSeries)) return false;
     if (!tri(f.ln, b.displayKind == Kind.ln)) return false;
     if (!tri(f.pdf, v.files.every((x) => x.format == 'pdf'))) return false;
+    if (f.folders.isNotEmpty || f.excludeFolders.isNotEmpty) {
+      final root = rootOf(b.path);
+      if (f.folders.isNotEmpty && !f.folders.contains(root)) return false;
+      if (f.excludeFolders.contains(root)) return false;
+    }
     final a = b.displayAuthor ?? '';
     if (f.authors.isNotEmpty && !f.authors.contains(a)) return false;
     if (f.excludeAuthors.contains(a)) return false;
@@ -543,8 +571,18 @@ class Library extends ChangeNotifier {
 
   // ---------------- tags ----------------
 
-  static const tagColors = [0xff9b86ff, 0xff2fe0c0, 0xffff6fb1, 0xffffbf5a, 0xff5aa8ff, 0xff5be38a, 0xffff8a5c,
-    0xffd07bff, 0xff7fd4ff, 0xfff2e05a];
+  static const tagColors = [
+    0xff9b86ff,
+    0xff2fe0c0,
+    0xffff6fb1,
+    0xffffbf5a,
+    0xff5aa8ff,
+    0xff5be38a,
+    0xffff8a5c,
+    0xffd07bff,
+    0xff7fd4ff,
+    0xfff2e05a,
+  ];
 
   Tag createTag(String name) {
     final t = Db.I.createTag(name, tagColors[_tags.length % tagColors.length]);
@@ -784,8 +822,11 @@ class Library extends ChangeNotifier {
     final outer = outerPath(b.path);
     final rel = p.relative(p.dirname(outer), from: lf.path);
     b.relDir = rel == '.' ? '' : rel;
-    final parsed = parseBookName(isInZip(b.path) ? p.basename(innerName(b.path)) : b.fileName,
-        relDir: b.relDir, seriesFromFolder: lf.kind == Kind.ln);
+    final parsed = parseBookName(
+      isInZip(b.path) ? p.basename(innerName(b.path)) : b.fileName,
+      relDir: b.relDir,
+      seriesFromFolder: lf.kind == Kind.ln,
+    );
     b
       ..title = parsed.title
       ..series = parsed.series
@@ -872,13 +913,15 @@ class Library extends ChangeNotifier {
     for (final lf in Settings.I.folders) {
       if (!Directory(lf.path).existsSync()) continue;
       try {
-        _watchers.add(Directory(lf.path).watch(recursive: true).listen((e) {
-          final ext = p.extension(e.path).toLowerCase();
-          if (bookExtensions.contains(ext) || ext == '.zip' || e.isDirectory) {
-            _watchDebounce?.cancel();
-            _watchDebounce = Timer(const Duration(seconds: 4), scan);
-          }
-        }, onError: (_) {}));
+        _watchers.add(
+          Directory(lf.path).watch(recursive: true).listen((e) {
+            final ext = p.extension(e.path).toLowerCase();
+            if (bookExtensions.contains(ext) || ext == '.zip' || e.isDirectory) {
+              _watchDebounce?.cancel();
+              _watchDebounce = Timer(const Duration(seconds: 4), scan);
+            }
+          }, onError: (_) {}),
+        );
       } catch (e) {
         AppLog.I.warn('Can\'t watch ${lf.path} for changes: $e');
       }
@@ -914,40 +957,42 @@ class Covers extends ChangeNotifier {
     if (safeMode || Jobs.I.isQueued(name)) return;
     final todo = Library.I.books.where((b) => !b.missing && cached(b) == null).toList();
     if (todo.isEmpty) return;
-    Jobs.I.add(Job(name, (job) async {
-      job.progress(0, total: todo.length, detail: 'covers');
-      var done = 0, made = 0;
-      for (var i = 0; i < todo.length; i += 8) {
-        if (!await job.checkpoint()) break;
-        final batch = todo.sublist(i, min(i + 8, todo.length));
-        final paths = batch.where((b) => b.format != 'pdf').map((b) => b.path).toList();
-        final infos = await inspectInIsolate(paths, Library.I.zipPasswords);
-        for (final info in infos) {
-          if (info.cover != null) {
-            await writeFileSafely(fileForFp(info.fingerprint), info.cover!);
-            made++;
-          }
-        }
-        for (final b in batch.where((b) => b.format == 'pdf')) {
-          final insp = Library.I.pdfInspector;
-          if (insp == null) continue;
-          try {
-            final path = isInZip(b.path) ? await Library.I.extractFromZip(b.path) : b.path;
-            final (_, cover) = await insp(path);
-            if (cover != null) {
-              await writeFileSafely(fileFor(b), cover);
+    Jobs.I.add(
+      Job(name, (job) async {
+        job.progress(0, total: todo.length, detail: 'covers');
+        var done = 0, made = 0;
+        for (var i = 0; i < todo.length; i += 8) {
+          if (!await job.checkpoint()) break;
+          final batch = todo.sublist(i, min(i + 8, todo.length));
+          final paths = batch.where((b) => b.format != 'pdf').map((b) => b.path).toList();
+          final infos = await inspectInIsolate(paths, Library.I.zipPasswords);
+          for (final info in infos) {
+            if (info.cover != null) {
+              await writeFileSafely(fileForFp(info.fingerprint), info.cover!);
               made++;
             }
-          } catch (_) {}
+          }
+          for (final b in batch.where((b) => b.format == 'pdf')) {
+            final insp = Library.I.pdfInspector;
+            if (insp == null) continue;
+            try {
+              final path = isInZip(b.path) ? await Library.I.extractFromZip(b.path) : b.path;
+              final (_, cover) = await insp(path);
+              if (cover != null) {
+                await writeFileSafely(fileFor(b), cover);
+                made++;
+              }
+            } catch (_) {}
+          }
+          done += batch.length;
+          version++;
+          job.progress(done, detail: batch.last.cardTitle);
+          notifyListeners();
         }
-        done += batch.length;
-        version++;
-        job.progress(done, detail: batch.last.cardTitle);
         notifyListeners();
-      }
-      notifyListeners();
-      return '$made covers made';
-    }, canPause: true));
+        return '$made covers made';
+      }, canPause: true),
+    );
   }
 
   Future<int> cacheSize() async {
@@ -972,15 +1017,20 @@ Future<Uint8List?> readZipInIsolate(String zip, String inner, List<String> passw
 
 Future<List<(String, int, int)>> listFilesInIsolate(String root) => Isolate.run(() => Library.listFiles(root));
 
-Future<List<(String, List<(String, int)>)>> listZipsInIsolate(List<String> zips) => Isolate.run(() => [
-      for (final z in zips)
-        (z, () {
+Future<List<(String, List<(String, int)>)>> listZipsInIsolate(List<String> zips) => Isolate.run(
+  () => [
+    for (final z in zips)
+      (
+        z,
+        () {
           try {
             return zipBookEntries(z);
           } catch (_) {
             return <(String, int)>[];
           }
-        }())
-    ]);
+        }(),
+      ),
+  ],
+);
 
 Future<List<String>> passwordsInIsolate(List<String> roots) => Isolate.run(() => passwordsFromFiles(roots));

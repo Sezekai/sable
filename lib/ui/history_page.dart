@@ -41,58 +41,91 @@ class _HistoryPageState extends State<HistoryPage> {
           if (t != null) items.add(_Item(c.$2, t, note: 'Marked read by hand'));
         }
         final query = q.toLowerCase();
-        final list = items
-            .where((i) => query.isEmpty ||
-                '${i.title.displayTitle} ${i.title.displaySeries ?? ''} ${i.title.displayAuthor ?? ''}'.toLowerCase().contains(query))
-            .toList()
-          ..sort((a, b) => b.at.compareTo(a.at));
+        final list =
+            items
+                .where(
+                  (i) =>
+                      query.isEmpty ||
+                      '${i.title.displayTitle} ${i.title.displaySeries ?? ''} ${i.title.displayAuthor ?? ''}'
+                          .toLowerCase()
+                          .contains(query),
+                )
+                .toList()
+              ..sort((a, b) => b.at.compareTo(a.at));
         final rows = <Widget>[];
         String? lastDay;
         for (final it in list) {
           final day = _dayLabel(it.at);
           if (day != lastDay) {
-            rows.add(Padding(
-              padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
-              child: Text(day, style: ts(w: FontWeight.w700, c: tk.sec)),
-            ));
+            rows.add(
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
+                child: Text(
+                  day,
+                  style: ts(w: FontWeight.w700, c: tk.sec),
+                ),
+              ),
+            );
             lastDay = day;
+          }
+          // A faint line between entries of the same day.
+          if (rows.isNotEmpty && rows.last is! Padding) {
+            rows.add(
+              Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 8), color: tk.line.withValues(alpha: 0.55)),
+            );
           }
           rows.add(_row(it));
         }
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Text('History', style: ts(size: 15, w: FontWeight.w700)),
-              const SizedBox(width: 10),
-              Expanded(child: Text('Every time you read: when, for how long, and how far you got.', style: ts(c: tk.sec))),
-            ]),
-            const SizedBox(height: 8),
-            PanelBox(
-              child: Row(children: [
-                Expanded(child: Field(hint: 'Search history', icon: Icons.search, onChanged: (v) => setState(() => q = v))),
-                const SizedBox(width: 8),
-                Btn('Clear history', kind: BtnKind.dangerGhost, onTap: () async {
-                  final ok = await confirm(
-                      context,
-                      'Clear all reading history?',
-                      'Reading sessions are removed. Read counts, ratings, favourites and tags stay, and your files aren\'t touched.',
-                      confirmLabel: 'Clear history',
-                      danger: true);
-                  if (ok) {
-                    Db.I.raw.execute('DELETE FROM sessions');
-                    Library.I.changed();
-                  }
-                }),
-              ]),
-            ),
-            const SizedBox(height: 4),
-            Expanded(
-              child: rows.isEmpty
-                  ? const EmptyState(icon: Icons.history, text: 'Nothing read yet. What you read shows up here.')
-                  : ListView(children: rows),
-            ),
-          ]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text('History', style: ts(size: 15, w: FontWeight.w700)),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text('Every time you read: when, for how long, and how far you got.', style: ts(c: tk.sec)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              PanelBox(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Field(hint: 'Search history', icon: Icons.search, onChanged: (v) => setState(() => q = v)),
+                    ),
+                    const SizedBox(width: 8),
+                    Btn(
+                      'Clear history',
+                      kind: BtnKind.dangerGhost,
+                      onTap: () async {
+                        final ok = await confirm(
+                          context,
+                          'Clear all reading history?',
+                          'Reading sessions are removed. Read counts, ratings, favourites and tags stay, and your files aren\'t touched.',
+                          confirmLabel: 'Clear history',
+                          danger: true,
+                        );
+                        if (ok) {
+                          Db.I.raw.execute('DELETE FROM sessions');
+                          Library.I.changed();
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              Expanded(
+                child: rows.isEmpty
+                    ? const EmptyState(icon: Icons.history, text: 'Nothing read yet. What you read shows up here.')
+                    : ListView(children: rows),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -120,42 +153,100 @@ class _HistoryPageState extends State<HistoryPage> {
         height: 68,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(color: h ? tk.raised : null, borderRadius: BorderRadius.circular(lk.rControl)),
-        child: Row(children: [
-          SizedBox(width: 42, height: 60, child: ClipRRect(borderRadius: BorderRadius.circular(4), child: BookCover(book: t, width: 42))),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(t.inSeries ? '${t.cardTitle}${t.volumeText.isEmpty ? '' : ' · ${t.volumeText}'}' : t.displayTitle,
-                  style: ts(w: FontWeight.w600), overflow: TextOverflow.ellipsis),
-              Text(
-                  [
-                    if (t.displayAuthor != null) t.displayAuthor!,
-                    t.format.toUpperCase(),
-                  ].join(' · '),
-                  style: ts(c: tk.faint, size: 12),
-                  overflow: TextOverflow.ellipsis),
-            ]),
-          ),
-          if (s != null) ...[
-            SizedBox(width: 130, child: Text('${timeText(s.startedAt)} → ${timeText(s.endedAt)}', style: ts(c: tk.sec, tab: true))),
-            SizedBox(width: 80, child: Text(humanHours(s.activeSeconds), style: ts(c: tk.sec, tab: true))),
+        child: Row(
+          children: [
             SizedBox(
+              width: 42,
+              height: 60,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: BookCover(book: t, width: 42),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          t.inSeries ? '${t.cardTitle}${t.volumeText.isEmpty ? '' : ' · ${t.volumeText}'}' : t.displayTitle,
+                          style: ts(w: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Btn.ghost(
+                        t.isRead && t.progress >= 0.999 ? 'Read again' : 'Continue',
+                        icon: Icons.play_arrow_rounded,
+                        dense: true,
+                        onTap: () => openBook(context, t),
+                      ),
+                    ],
+                  ),
+                  Text(
+                    [if (t.displayAuthor != null) t.displayAuthor!, t.format.toUpperCase()].join(' · '),
+                    style: ts(c: tk.faint, size: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            if (s != null) ...[
+              SizedBox(
+                width: 130,
+                child: Text('${timeText(s.startedAt)} → ${timeText(s.endedAt)}', style: ts(c: tk.sec, tab: true)),
+              ),
+              SizedBox(
+                width: 80,
+                child: Text(humanHours(s.activeSeconds), style: ts(c: tk.sec, tab: true)),
+              ),
+              SizedBox(
                 width: 170,
-                child: Text('${(s.fromPct * 100).floor()}% → ${(s.toPct * 100).floor()}% · ${s.pagesRead} pages', style: ts(c: tk.sec, tab: true))),
-            SizedBox(width: 70, child: s.completed ? Text('Finished', style: ts(c: tk.ok, w: FontWeight.w600)) : const SizedBox()),
-            SizedBox(width: 40, child: Text(s.device, style: ts(c: tk.faint, size: 12))),
-          ] else
-            SizedBox(width: 490, child: Text(it.note ?? '', style: ts(c: tk.sec))),
-          IconBtn(Icons.menu_book_outlined, tooltip: 'Read', onTap: () => openBook(context, t)),
-          if (s != null)
-            IconBtn(Icons.delete_outline, tooltip: 'Remove this entry', onTap: () async {
-              if (await confirm(context, 'Remove this history entry?', 'Only the record of this session is removed.',
-                  confirmLabel: 'Remove entry')) {
-                Db.I.deleteSession(s.id);
-                Library.I.changed();
-              }
-            }),
-        ]),
+                child: Text(
+                  '${(s.fromPct * 100).floor()}% → ${(s.toPct * 100).floor()}% · ${s.pagesRead} pages',
+                  style: ts(c: tk.sec, tab: true),
+                ),
+              ),
+              SizedBox(
+                width: 70,
+                child: s.completed
+                    ? Text(
+                        'Finished',
+                        style: ts(c: tk.ok, w: FontWeight.w600),
+                      )
+                    : const SizedBox(),
+              ),
+              SizedBox(
+                width: 40,
+                child: Text(s.device, style: ts(c: tk.faint, size: 12)),
+              ),
+            ] else
+              SizedBox(
+                width: 490,
+                child: Text(it.note ?? '', style: ts(c: tk.sec)),
+              ),
+            if (s != null)
+              IconBtn(
+                Icons.delete_outline,
+                tooltip: 'Remove this entry',
+                onTap: () async {
+                  if (await confirm(
+                    context,
+                    'Remove this history entry?',
+                    'Only the record of this session is removed.',
+                    confirmLabel: 'Remove entry',
+                  )) {
+                    Db.I.deleteSession(s.id);
+                    Library.I.changed();
+                  }
+                },
+              ),
+          ],
+        ),
       ),
     );
   }

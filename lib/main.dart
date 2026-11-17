@@ -383,6 +383,29 @@ Future<void> _runSelftest() async {
         }
         check(r.fraction > before, 'turning pages moves on (${(before * 100).toStringAsFixed(1)}% → ${(r.fraction * 100).toStringAsFixed(1)}%)');
         await _screenshot('reader');
+        // Separate margins and a text colour.
+        final st = Settings.I.style;
+        st.marginX = 160;
+        st.marginY = 100;
+        st.textColor = '#ffd27a';
+        r.cmd('sable.setStyle(${jsonEncode(st.toJson())})');
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+        await _screenshot('reader-margins-colour');
+        st.apply(ReadingStyle().toJson());
+        r.cmd('sable.setStyle(${jsonEncode(st.toJson())})');
+        // Space keeps the controls up; M opens them as a keyboard menu.
+        r.togglePinned();
+        check(r.chrome && r.pinned, 'Space shows the controls and keeps them');
+        r.openMenu();
+        r.menuKey('ArrowRight');
+        r.menuKey('ArrowRight');
+        await Future<void>.delayed(const Duration(milliseconds: 500));
+        await _screenshot('reader-menu');
+        check(r.menu && r.menuIndex == 2, 'the controls menu moves with the arrow keys');
+        r.menuKey('Escape');
+        check(!r.menu, 'Esc closes the controls menu');
+        r.togglePinned();
+        check(!r.chrome, 'Space again hides the controls');
         r.showPanel('style');
         await Future<void>.delayed(const Duration(milliseconds: 600));
         await _screenshot('reader-settings');
@@ -416,6 +439,10 @@ Future<void> _runSelftest() async {
         r2.next();
         await Future<void>.delayed(const Duration(seconds: 1));
         await _screenshot('reader-pdf');
+        r2.toggleCrop();
+        await Future<void>.delayed(const Duration(seconds: 1));
+        await _screenshot('reader-pdf-cropped');
+        r2.toggleCrop();
       }
       navKey.currentState?.popUntil((x) => x.isFirst);
       await Future<void>.delayed(const Duration(milliseconds: 600));
@@ -450,9 +477,25 @@ Future<void> _runSelftest() async {
     Nav.I.go(PageId.library);
     await Future<void>.delayed(const Duration(milliseconds: 800));
     await _screenshot('library-starlight');
+    // Books / light novels and library-folder filters.
+    final lf = Library.I.filter;
+    lf.ln = Tri.no;
+    final onlyBooks = Library.I.entries().length;
+    lf.ln = Tri.any;
+    final all = Library.I.entries().length;
+    check(onlyBooks > 0 && onlyBooks <= all, 'Books-only filter ($onlyBooks of $all)');
+    lf.folders = {Settings.I.folders.first.path};
+    final inFolder = Library.I.entries().length;
+    check(inFolder > 0, 'library folder filter ($inFolder in ${Settings.I.folders.first.path})');
+    Library.I.changed();
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    await _screenshot('library-filtered');
+    Library.I.filter = LibFilter();
+    Library.I.changed();
     Nav.I.toggle('keys');
     await Future<void>.delayed(const Duration(milliseconds: 500));
     await _screenshot('keys');
+    await Future<void>.delayed(const Duration(milliseconds: 200));
     Nav.I.toggle('keys');
     check(AppLog.I.errorCount == 0, 'no errors logged (${AppLog.I.errorCount})');
   } catch (e, st) {

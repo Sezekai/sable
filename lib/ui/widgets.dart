@@ -9,19 +9,18 @@ Tokens get tk => Look.I.t;
 Look get lk => Look.I;
 
 TextStyle ts({double? size, FontWeight? w, Color? c, bool mono = false, bool tab = false}) => TextStyle(
-      fontSize: size ?? lk.fontSize,
-      fontWeight: w,
-      color: c ?? tk.text,
-      fontFamily: mono ? 'JetBrains Mono' : (lk.font == 'Inter' ? 'Inter' : lk.font),
-      fontFeatures: tab ? const [FontFeature.tabularFigures()] : null,
-      height: 1.25,
-    );
+  fontSize: size ?? lk.fontSize,
+  fontWeight: w,
+  color: c ?? tk.text,
+  fontFamily: mono ? 'JetBrains Mono' : (lk.font == 'Inter' ? 'Inter' : lk.font),
+  fontFeatures: tab ? const [FontFeature.tabularFigures()] : null,
+  height: 1.25,
+);
 
 enum BtnKind { primary, normal, ghost, dangerGhost, danger }
 
 class Btn extends StatefulWidget {
-  const Btn(this.label,
-      {super.key, this.onTap, this.icon, this.kind = BtnKind.normal, this.tooltip, this.dense = false});
+  const Btn(this.label, {super.key, this.onTap, this.icon, this.kind = BtnKind.normal, this.tooltip, this.dense = false});
   final String label;
   final VoidCallback? onTap;
   final IconData? icon;
@@ -29,10 +28,8 @@ class Btn extends StatefulWidget {
   final String? tooltip;
   final bool dense;
 
-  const Btn.primary(this.label, {super.key, this.onTap, this.icon, this.tooltip, this.dense = false})
-      : kind = BtnKind.primary;
-  const Btn.ghost(this.label, {super.key, this.onTap, this.icon, this.tooltip, this.dense = false})
-      : kind = BtnKind.ghost;
+  const Btn.primary(this.label, {super.key, this.onTap, this.icon, this.tooltip, this.dense = false}) : kind = BtnKind.primary;
+  const Btn.ghost(this.label, {super.key, this.onTap, this.icon, this.tooltip, this.dense = false}) : kind = BtnKind.ghost;
 
   @override
   State<Btn> createState() => _BtnState();
@@ -81,12 +78,19 @@ class _BtnState extends State<Btn> {
             ? [BoxShadow(color: lk.acc.withValues(alpha: 0.45), blurRadius: 12, offset: const Offset(0, 4))]
             : null,
       ),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (widget.icon != null) Icon(widget.icon, size: 16, color: fg),
-        if (widget.icon != null && widget.label.isNotEmpty) const SizedBox(width: 6),
-        if (widget.label.isNotEmpty)
-          Text(widget.label, style: ts(w: FontWeight.w600, c: fg), overflow: TextOverflow.ellipsis),
-      ]),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.icon != null) Icon(widget.icon, size: 16, color: fg),
+          if (widget.icon != null && widget.label.isNotEmpty) const SizedBox(width: 6),
+          if (widget.label.isNotEmpty)
+            Text(
+              widget.label,
+              style: ts(w: FontWeight.w600, c: fg),
+              overflow: TextOverflow.ellipsis,
+            ),
+        ],
+      ),
     );
     Widget w = Opacity(
       opacity: enabled ? 1 : 0.45,
@@ -147,11 +151,8 @@ class _Hover extends StatefulWidget {
 class _HoverState extends State<_Hover> {
   bool h = false;
   @override
-  Widget build(BuildContext context) => MouseRegion(
-        onEnter: (_) => setState(() => h = true),
-        onExit: (_) => setState(() => h = false),
-        child: widget.builder(h),
-      );
+  Widget build(BuildContext context) =>
+      MouseRegion(onEnter: (_) => setState(() => h = true), onExit: (_) => setState(() => h = false), child: widget.builder(h));
 }
 
 class Hoverable extends StatelessWidget {
@@ -172,27 +173,35 @@ class Seg<T> extends StatelessWidget {
     return Container(
       height: lk.hControl,
       padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(color: tk.field, borderRadius: BorderRadius.circular(lk.rControl),
-          border: Border.all(color: tk.line)),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        for (final it in items)
-          GestureDetector(
-            onTap: () => onChanged(it.$1),
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10),
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: it.$1 == value ? tk.raised2 : null,
-                  borderRadius: BorderRadius.circular(lk.rControl - 1),
+      decoration: BoxDecoration(
+        color: tk.field,
+        borderRadius: BorderRadius.circular(lk.rControl),
+        border: Border.all(color: tk.line),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final it in items)
+            GestureDetector(
+              onTap: () => onChanged(it.$1),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: it.$1 == value ? tk.raised2 : null,
+                    borderRadius: BorderRadius.circular(lk.rControl - 1),
+                  ),
+                  child: Text(
+                    it.$2,
+                    style: ts(w: FontWeight.w600, c: it.$1 == value ? tk.text : tk.sec, size: lk.fontSize - 1),
+                  ),
                 ),
-                child: Text(it.$2,
-                    style: ts(w: FontWeight.w600, c: it.$1 == value ? tk.text : tk.sec, size: lk.fontSize - 1)),
               ),
             ),
-          ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -222,21 +231,39 @@ class Drop<T> extends StatelessWidget {
         height: lk.hControl,
         width: width,
         padding: const EdgeInsets.only(left: 10, right: 6),
-        decoration: BoxDecoration(color: tk.raised, borderRadius: BorderRadius.circular(lk.rControl),
-            border: Border.all(color: tk.line)),
-        child: Row(mainAxisSize: width == null ? MainAxisSize.min : MainAxisSize.max, children: [
-          Flexible(child: Text(label, style: ts(), overflow: TextOverflow.ellipsis)),
-          const SizedBox(width: 4),
-          Icon(Icons.expand_more, size: 14, color: tk.sec),
-        ]),
+        decoration: BoxDecoration(
+          color: tk.raised,
+          borderRadius: BorderRadius.circular(lk.rControl),
+          border: Border.all(color: tk.line),
+        ),
+        child: Row(
+          mainAxisSize: width == null ? MainAxisSize.min : MainAxisSize.max,
+          children: [
+            Flexible(
+              child: Text(label, style: ts(), overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.expand_more, size: 14, color: tk.sec),
+          ],
+        ),
       ),
     );
   }
 }
 
 class Field extends StatelessWidget {
-  const Field({super.key, this.controller, this.hint, this.onChanged, this.onSubmitted, this.focusNode,
-      this.width, this.icon, this.autofocus = false, this.mono = false});
+  const Field({
+    super.key,
+    this.controller,
+    this.hint,
+    this.onChanged,
+    this.onSubmitted,
+    this.focusNode,
+    this.width,
+    this.icon,
+    this.autofocus = false,
+    this.mono = false,
+  });
   final TextEditingController? controller;
   final String? hint;
   final ValueChanged<String>? onChanged;
@@ -271,13 +298,82 @@ class Field extends StatelessWidget {
           filled: true,
           fillColor: tk.field,
           contentPadding: const EdgeInsets.symmetric(horizontal: 10),
-          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(lk.rControl),
-              borderSide: BorderSide(color: tk.line)),
-          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(lk.rControl),
-              borderSide: BorderSide(color: lk.outline, width: lk.outlineWidth)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(lk.rControl),
+            borderSide: BorderSide(color: tk.line),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(lk.rControl),
+            borderSide: BorderSide(color: lk.outline, width: lk.outlineWidth),
+          ),
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(lk.rControl)),
         ),
       ),
+    );
+  }
+}
+
+/// A box for typing an exact percentage (like 103), with a % after it.
+/// Enter or leaving the box applies it; the value is kept within [min]–[max].
+class PercentField extends StatefulWidget {
+  const PercentField({super.key, required this.value, required this.min, required this.max, required this.onSet});
+  final double value; // 1.0 = 100%
+  final double min, max;
+  final ValueChanged<double> onSet;
+  @override
+  State<PercentField> createState() => _PercentFieldState();
+}
+
+class _PercentFieldState extends State<PercentField> {
+  late final TextEditingController ctl = TextEditingController(text: _text(widget.value));
+  final FocusNode focus = FocusNode();
+
+  static String _text(double v) => '${(v * 100).round()}';
+
+  @override
+  void initState() {
+    super.initState();
+    focus.addListener(() {
+      if (!focus.hasFocus) _apply();
+    });
+  }
+
+  @override
+  void didUpdateWidget(PercentField old) {
+    super.didUpdateWidget(old);
+    if (!focus.hasFocus && ctl.text != _text(widget.value)) ctl.text = _text(widget.value);
+  }
+
+  void _apply() {
+    final n = double.tryParse(ctl.text.replaceAll('%', '').trim());
+    if (n == null) {
+      ctl.text = _text(widget.value);
+      return;
+    }
+    final v = (n / 100).clamp(widget.min, widget.max);
+    ctl.text = _text(v);
+    if ((v - widget.value).abs() > 0.0001) widget.onSet(v);
+  }
+
+  @override
+  void dispose() {
+    ctl.dispose();
+    focus.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 64,
+          child: Field(controller: ctl, focusNode: focus, mono: true, onSubmitted: (_) => _apply()),
+        ),
+        const SizedBox(width: 4),
+        Text('%', style: ts(c: tk.sec)),
+      ],
     );
   }
 }
@@ -288,11 +384,14 @@ class PanelBox extends StatelessWidget {
   final EdgeInsets padding;
   @override
   Widget build(BuildContext context) => Container(
-        padding: padding,
-        decoration: BoxDecoration(color: tk.panel, borderRadius: BorderRadius.circular(lk.rPanel),
-            border: Border.all(color: tk.line)),
-        child: child,
-      );
+    padding: padding,
+    decoration: BoxDecoration(
+      color: tk.panel,
+      borderRadius: BorderRadius.circular(lk.rPanel),
+      border: Border.all(color: tk.line),
+    ),
+    child: child,
+  );
 }
 
 /// 24 px round pill, for filters.
@@ -319,15 +418,28 @@ class Pill extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: active ? c.withValues(alpha: 0.6) : tk.line),
           ),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (negative) Text('not ', style: ts(size: lk.fontSize - 1, c: tk.danger, w: FontWeight.w600)),
-            Text(label, style: ts(size: lk.fontSize - 1, c: active ? tk.text : tk.sec, w: FontWeight.w600)),
-            if (onClose != null)
-              GestureDetector(onTap: onClose, child: Padding(
-                padding: const EdgeInsets.only(left: 4),
-                child: Icon(Icons.close, size: 13, color: tk.sec),
-              )),
-          ]),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (negative)
+                Text(
+                  'not ',
+                  style: ts(size: lk.fontSize - 1, c: tk.danger, w: FontWeight.w600),
+                ),
+              Text(
+                label,
+                style: ts(size: lk.fontSize - 1, c: active ? tk.text : tk.sec, w: FontWeight.w600),
+              ),
+              if (onClose != null)
+                GestureDetector(
+                  onTap: onClose,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Icon(Icons.close, size: 13, color: tk.sec),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -342,18 +454,30 @@ class TagChip extends StatelessWidget {
   final VoidCallback? onRemove;
   @override
   Widget build(BuildContext context) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          height: 20,
-          padding: EdgeInsets.only(left: 8, right: onRemove == null ? 8 : 3),
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(10), border: Border.all(color: color.withValues(alpha: 0.7))),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(name, style: ts(size: lk.fontSize - 2, c: color, w: FontWeight.w600)),
-            if (onRemove != null)
-              GestureDetector(onTap: onRemove, child: Icon(Icons.close, size: 12, color: color)),
-          ]),
-        ),
-      );
+    onTap: onTap,
+    child: Container(
+      height: 20,
+      padding: EdgeInsets.only(left: 8, right: onRemove == null ? 8 : 3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color.withValues(alpha: 0.7)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            name,
+            style: ts(size: lk.fontSize - 2, c: color, w: FontWeight.w600),
+          ),
+          if (onRemove != null)
+            GestureDetector(
+              onTap: onRemove,
+              child: Icon(Icons.close, size: 12, color: color),
+            ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// Half-star rating, 0.5 to 5. Tapping the current value clears it.
@@ -364,34 +488,38 @@ class Stars extends StatelessWidget {
   final double size;
   @override
   Widget build(BuildContext context) {
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      for (var i = 1; i <= 5; i++)
-        SizedBox(
-          width: size,
-          height: size,
-          child: Stack(children: [
-            Icon(
-              value >= i ? Icons.star_rounded : (value >= i - 0.5 ? Icons.star_half_rounded : Icons.star_outline_rounded),
-              size: size,
-              color: value >= i - 0.5 ? lk.acc : tk.faint,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 1; i <= 5; i++)
+          SizedBox(
+            width: size,
+            height: size,
+            child: Stack(
+              children: [
+                Icon(
+                  value >= i ? Icons.star_rounded : (value >= i - 0.5 ? Icons.star_half_rounded : Icons.star_outline_rounded),
+                  size: size,
+                  color: value >= i - 0.5 ? lk.acc : tk.faint,
+                ),
+                if (onChanged != null)
+                  Row(
+                    children: [
+                      Expanded(child: _starHit(i - 0.5)),
+                      Expanded(child: _starHit(i.toDouble())),
+                    ],
+                  ),
+              ],
             ),
-            if (onChanged != null)
-              Row(children: [
-                Expanded(child: _starHit(i - 0.5)),
-                Expanded(child: _starHit(i.toDouble())),
-              ]),
-          ]),
-        ),
-    ]);
+          ),
+      ],
+    );
   }
 
   Widget _starHit(double v) => MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => onChanged!(value == v ? 0 : v),
-        ),
-      );
+    cursor: SystemMouseCursors.click,
+    child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => onChanged!(value == v ? 0 : v)),
+  );
 }
 
 class Progress extends StatelessWidget {
@@ -424,8 +552,7 @@ class _Sliding extends StatefulWidget {
 }
 
 class _SlidingState extends State<_Sliding> with SingleTickerProviderStateMixin {
-  late final AnimationController c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat();
+  late final AnimationController c = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat();
   @override
   void dispose() {
     c.dispose();
@@ -434,19 +561,18 @@ class _SlidingState extends State<_Sliding> with SingleTickerProviderStateMixin 
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
-        animation: c,
-        builder: (_, _) => FractionallySizedBox(
-          alignment: Alignment(-1.4 + 2.8 * c.value, 0),
-          widthFactor: 0.3,
-          child: DecoratedBox(decoration: BoxDecoration(gradient: lk.grad)),
-        ),
-      );
+    animation: c,
+    builder: (_, _) => FractionallySizedBox(
+      alignment: Alignment(-1.4 + 2.8 * c.value, 0),
+      widthFactor: 0.3,
+      child: DecoratedBox(decoration: BoxDecoration(gradient: lk.grad)),
+    ),
+  );
 }
 
 // ---------------- dialogs and toasts ----------------
 
-Future<bool> confirm(BuildContext context, String title, String body,
-    {String confirmLabel = 'OK', bool danger = false}) async {
+Future<bool> confirm(BuildContext context, String title, String body, {String confirmLabel = 'OK', bool danger = false}) async {
   final r = await showDialog<bool>(
     context: context,
     barrierColor: Colors.black54,
@@ -470,10 +596,18 @@ Future<String?> ask(BuildContext context, String title, {String? body, String in
     barrierColor: Colors.black54,
     builder: (c) => AppDialog(
       title: title,
-      body: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        if (body != null) Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(body, style: ts(c: tk.sec))),
-        Field(controller: ctl, autofocus: true, onSubmitted: (v) => Navigator.pop(c, v.trim())),
-      ]),
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (body != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(body, style: ts(c: tk.sec)),
+            ),
+          Field(controller: ctl, autofocus: true, onSubmitted: (v) => Navigator.pop(c, v.trim())),
+        ],
+      ),
       actions: [
         Btn('Cancel', onTap: () => Navigator.pop(c)),
         Btn.primary(confirmLabel, onTap: () => Navigator.pop(c, ctl.text.trim())),
@@ -492,27 +626,36 @@ class AppDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return CallbackShortcuts(
-      bindings: {
-        if (onEnter != null) const SingleActivator(LogicalKeyboardKey.enter): onEnter!,
-      },
+      bindings: {if (onEnter != null) const SingleActivator(LogicalKeyboardKey.enter): onEnter!},
       child: Focus(
         autofocus: true,
         child: Dialog(
           backgroundColor: tk.panel,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(lk.rPanel), side: BorderSide(color: tk.line2)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(lk.rPanel),
+            side: BorderSide(color: tk.line2),
+          ),
           child: ConstrainedBox(
             constraints: BoxConstraints(maxWidth: width),
             child: Padding(
               padding: const EdgeInsets.all(18),
-              child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(title, style: ts(size: lk.fontSize + 2, w: FontWeight.w700)),
-                const SizedBox(height: 10),
-                Flexible(child: body),
-                const SizedBox(height: 16),
-                Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-                  for (final a in actions) Padding(padding: const EdgeInsets.only(left: 8), child: a),
-                ]),
-              ]),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: ts(size: lk.fontSize + 2, w: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 10),
+                  Flexible(child: body),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [for (final a in actions) Padding(padding: const EdgeInsets.only(left: 8), child: a)],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -550,37 +693,43 @@ class ToastLayer extends StatelessWidget {
       builder: (_, _) => Positioned(
         right: 16,
         bottom: 52,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          for (final t in Toasts.I.items)
-            Container(
-              margin: const EdgeInsets.only(top: 8),
-              constraints: const BoxConstraints(maxWidth: 420),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-              decoration: BoxDecoration(
-                color: tk.panel,
-                borderRadius: BorderRadius.circular(lk.rPanel),
-                border: Border.all(color: tk.line2),
-                boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 16, offset: Offset(0, 6))],
-              ),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(
-                  switch (t.$2) {
-                    ToastKind.ok => Icons.check_circle_outline,
-                    ToastKind.error => Icons.error_outline,
-                    ToastKind.info => Icons.info_outline,
-                  },
-                  size: 16,
-                  color: switch (t.$2) {
-                    ToastKind.ok => tk.ok,
-                    ToastKind.error => tk.danger,
-                    ToastKind.info => lk.acc,
-                  },
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            for (final t in Toasts.I.items)
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                constraints: const BoxConstraints(maxWidth: 420),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                decoration: BoxDecoration(
+                  color: tk.panel,
+                  borderRadius: BorderRadius.circular(lk.rPanel),
+                  border: Border.all(color: tk.line2),
+                  boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 16, offset: Offset(0, 6))],
                 ),
-                const SizedBox(width: 8),
-                Flexible(child: Text(t.$1, style: ts())),
-              ]),
-            ),
-        ]),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      switch (t.$2) {
+                        ToastKind.ok => Icons.check_circle_outline,
+                        ToastKind.error => Icons.error_outline,
+                        ToastKind.info => Icons.info_outline,
+                      },
+                      size: 16,
+                      color: switch (t.$2) {
+                        ToastKind.ok => tk.ok,
+                        ToastKind.error => tk.danger,
+                        ToastKind.info => lk.acc,
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(child: Text(t.$1, style: ts())),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -593,13 +742,20 @@ class EmptyState extends StatelessWidget {
   final Widget? action;
   @override
   Widget build(BuildContext context) => Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Icon(icon, size: 28, color: tk.faint),
-          const SizedBox(height: 10),
-          Text(text, style: ts(c: tk.sec), textAlign: TextAlign.center),
-          if (action != null) ...[const SizedBox(height: 12), action!],
-        ]),
-      );
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 28, color: tk.faint),
+        const SizedBox(height: 10),
+        Text(
+          text,
+          style: ts(c: tk.sec),
+          textAlign: TextAlign.center,
+        ),
+        if (action != null) ...[const SizedBox(height: 12), action!],
+      ],
+    ),
+  );
 }
 
 class Banner1 extends StatelessWidget {
@@ -610,21 +766,29 @@ class Banner1 extends StatelessWidget {
   final Widget? action;
   @override
   Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: Color.lerp(tk.panel, lk.acc, 0.06),
-          borderRadius: BorderRadius.circular(lk.rPanel),
-          border: Border.all(color: lk.acc.withValues(alpha: 0.26)),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+    decoration: BoxDecoration(
+      color: Color.lerp(tk.panel, lk.acc, 0.06),
+      borderRadius: BorderRadius.circular(lk.rPanel),
+      border: Border.all(color: lk.acc.withValues(alpha: 0.26)),
+    ),
+    child: Row(
+      children: [
+        Icon(icon, size: 16, color: lk.acc),
+        const SizedBox(width: 8),
+        Text(lead, style: ts(w: FontWeight.w600)),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: ts(c: tk.sec),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
-        child: Row(children: [
-          Icon(icon, size: 16, color: lk.acc),
-          const SizedBox(width: 8),
-          Text(lead, style: ts(w: FontWeight.w600)),
-          const SizedBox(width: 6),
-          Expanded(child: Text(text, style: ts(c: tk.sec), overflow: TextOverflow.ellipsis)),
-          if (action != null) action!,
-        ]),
-      );
+        if (action != null) action!,
+      ],
+    ),
+  );
 }
 
 String dateText(int epochSec) {
@@ -663,53 +827,63 @@ class _ColourDialogState extends State<_ColourDialog> {
   static String _hex(Color c) => '#${(c.toARGB32() & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}';
 
   void _set(HSVColor v) => setState(() {
-        hsv = v;
-        hex.text = _hex(v.toColor());
-      });
+    hsv = v;
+    hex.text = _hex(v.toColor());
+  });
 
   Widget _track(String label, double value, double max, List<Color> colors, ValueChanged<double> on) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        child: Row(children: [
-          SizedBox(width: 90, child: Text(label, style: ts(c: tk.sec))),
-          Expanded(
-            child: LayoutBuilder(builder: (context, c) {
+    padding: const EdgeInsets.symmetric(vertical: 6),
+    child: Row(
+      children: [
+        SizedBox(
+          width: 90,
+          child: Text(label, style: ts(c: tk.sec)),
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, c) {
               void at(double x) => on((x / c.maxWidth).clamp(0.0, 1.0) * max);
               return GestureDetector(
                 onTapDown: (d) => at(d.localPosition.dx),
                 onHorizontalDragUpdate: (d) => at(d.localPosition.dx),
                 child: SizedBox(
                   height: 22,
-                  child: Stack(clipBehavior: Clip.none, children: [
-                    Positioned.fill(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(colors: colors),
-                          borderRadius: BorderRadius.circular(11),
-                          border: Border.all(color: tk.line2),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned.fill(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: colors),
+                            borderRadius: BorderRadius.circular(11),
+                            border: Border.all(color: tk.line2),
+                          ),
                         ),
                       ),
-                    ),
-                    Positioned(
-                      left: (value / max) * c.maxWidth - 9,
-                      top: 2,
-                      child: Container(
-                        width: 18,
-                        height: 18,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: hsv.toColor(),
-                          border: Border.all(color: Colors.white, width: 2),
-                          boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)],
+                      Positioned(
+                        left: (value / max) * c.maxWidth - 9,
+                        top: 2,
+                        child: Container(
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: hsv.toColor(),
+                            border: Border.all(color: Colors.white, width: 2),
+                            boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 4)],
+                          ),
                         ),
                       ),
-                    ),
-                  ]),
+                    ],
+                  ),
                 ),
               );
-            }),
+            },
           ),
-        ]),
-      );
+        ),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -717,34 +891,57 @@ class _ColourDialogState extends State<_ColourDialog> {
     return AppDialog(
       title: widget.title,
       width: 460,
-      body: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Container(width: 80, height: 48, decoration: BoxDecoration(color: widget.start, borderRadius: const BorderRadius.horizontal(left: Radius.circular(8)))),
-          Container(width: 80, height: 48, decoration: BoxDecoration(color: c, borderRadius: const BorderRadius.horizontal(right: Radius.circular(8)))),
-          const SizedBox(width: 12),
-          Text('Before · after', style: ts(c: tk.faint, size: 12)),
-          const Spacer(),
-          SizedBox(
-            width: 110,
-            child: Field(
-              controller: hex,
-              mono: true,
-              onChanged: (v) {
-                final t = v.replaceAll('#', '').trim();
-                if (RegExp(r'^[0-9a-fA-F]{6}$').hasMatch(t)) {
-                  setState(() => hsv = HSVColor.fromColor(Color(int.parse('FF$t', radix: 16))));
-                }
-              },
-            ),
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 80,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: widget.start,
+                  borderRadius: const BorderRadius.horizontal(left: Radius.circular(8)),
+                ),
+              ),
+              Container(
+                width: 80,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: c,
+                  borderRadius: const BorderRadius.horizontal(right: Radius.circular(8)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text('Before · after', style: ts(c: tk.faint, size: 12)),
+              const Spacer(),
+              SizedBox(
+                width: 110,
+                child: Field(
+                  controller: hex,
+                  mono: true,
+                  onChanged: (v) {
+                    final t = v.replaceAll('#', '').trim();
+                    if (RegExp(r'^[0-9a-fA-F]{6}$').hasMatch(t)) {
+                      setState(() => hsv = HSVColor.fromColor(Color(int.parse('FF$t', radix: 16))));
+                    }
+                  },
+                ),
+              ),
+            ],
           ),
-        ]),
-        const SizedBox(height: 10),
-        _track('Hue', hsv.hue, 360, [for (var h = 0; h <= 360; h += 60) HSVColor.fromAHSV(1, h.toDouble(), 1, 1).toColor()],
-            (v) => _set(hsv.withHue(v.clamp(0, 359.9)))),
-        _track('Colourfulness', hsv.saturation, 1, [hsv.withSaturation(0).toColor(), hsv.withSaturation(1).toColor()],
-            (v) => _set(hsv.withSaturation(v))),
-        _track('Brightness', hsv.value, 1, [Colors.black, hsv.withValue(1).toColor()], (v) => _set(hsv.withValue(v))),
-      ]),
+          const SizedBox(height: 10),
+          _track('Hue', hsv.hue, 360, [
+            for (var h = 0; h <= 360; h += 60) HSVColor.fromAHSV(1, h.toDouble(), 1, 1).toColor(),
+          ], (v) => _set(hsv.withHue(v.clamp(0, 359.9)))),
+          _track('Colourfulness', hsv.saturation, 1, [
+            hsv.withSaturation(0).toColor(),
+            hsv.withSaturation(1).toColor(),
+          ], (v) => _set(hsv.withSaturation(v))),
+          _track('Brightness', hsv.value, 1, [Colors.black, hsv.withValue(1).toColor()], (v) => _set(hsv.withValue(v))),
+        ],
+      ),
       actions: [
         Btn('Cancel', onTap: () => Navigator.pop(context)),
         Btn.primary('Use this colour', onTap: () => Navigator.pop(context, c)),

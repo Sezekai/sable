@@ -25,8 +25,11 @@ class LibFolder {
   bool collection;
 
   Map<String, dynamic> toJson() => {'path': path, 'kind': kind.name, 'collection': collection};
-  static LibFolder fromJson(Map m) => LibFolder(m['path'] as String? ?? '',
-      kind: Kind.byName(m['kind'] as String?), collection: m['collection'] as bool? ?? false);
+  static LibFolder fromJson(Map m) => LibFolder(
+    m['path'] as String? ?? '',
+    kind: Kind.byName(m['kind'] as String?),
+    collection: m['collection'] as bool? ?? false,
+  );
 }
 
 enum PageLayout { auto, one, two }
@@ -38,7 +41,11 @@ class ReadingStyle {
   String font = 'Literata'; // book | Literata | Inter | Georgia | Palatino Linotype
   double size = 18; // px
   double spacing = 1.5;
-  double margin = 48; // px either side
+  double marginX = 48; // px at the left and right
+  double marginY = 44; // px at the top and bottom
+
+  /// Text colour on the page as #rrggbb, or '' for the theme's own.
+  String textColor = '';
   bool justify = true;
   bool publisherStyles = false;
   PageLayout layout = PageLayout.auto;
@@ -49,24 +56,29 @@ class ReadingStyle {
   double scrollStep = 140;
 
   Map<String, dynamic> toJson() => {
-        'font': font,
-        'size': size,
-        'spacing': spacing,
-        'margin': margin,
-        'justify': justify,
-        'publisherStyles': publisherStyles,
-        'layout': layout.name,
-        'flow': flow.name,
-        'animate': animate,
-        'scrollStep': scrollStep,
-      };
+    'font': font,
+    'size': size,
+    'spacing': spacing,
+    'marginX': marginX,
+    'marginY': marginY,
+    'textColor': textColor,
+    'justify': justify,
+    'publisherStyles': publisherStyles,
+    'layout': layout.name,
+    'flow': flow.name,
+    'animate': animate,
+    'scrollStep': scrollStep,
+  };
 
   void apply(Map m) {
     font = m['font'] as String? ?? font;
     if (!readingFonts.contains(font)) font = 'Literata';
     size = ((m['size'] as num?)?.toDouble() ?? size).clamp(12, 36);
     spacing = ((m['spacing'] as num?)?.toDouble() ?? spacing).clamp(1.0, 2.4);
-    margin = ((m['margin'] as num?)?.toDouble() ?? margin).clamp(0, 160);
+    marginX = ((m['marginX'] as num?)?.toDouble() ?? (m['margin'] as num?)?.toDouble() ?? marginX).clamp(0, 240);
+    marginY = ((m['marginY'] as num?)?.toDouble() ?? marginY).clamp(0, 200);
+    final tc = m['textColor'];
+    textColor = tc is String && RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(tc) ? tc : (tc == '' ? '' : textColor);
     justify = m['justify'] as bool? ?? justify;
     publisherStyles = m['publisherStyles'] as bool? ?? publisherStyles;
     layout = PageLayout.values.firstWhere((e) => e.name == m['layout'], orElse: () => layout);
@@ -81,11 +93,11 @@ const readingFonts = ['book', 'Literata', 'Inter', 'Georgia', 'Palatino Linotype
 String fontLabel(String f) => f == 'book' ? "The book's own" : f;
 
 List<LibFolder> defaultFolders() => [
-      LibFolder(r'E:\Documents\LIGHT NOVELS', kind: Kind.ln),
-      LibFolder(r'E:\Documents\BOOKS'),
-      LibFolder(r'E:\Documents\BOOKS I OWN'),
-      LibFolder(r'E:\Documents\BOOK Collections', collection: true),
-    ];
+  LibFolder(r'E:\Documents\LIGHT NOVELS', kind: Kind.ln),
+  LibFolder(r'E:\Documents\BOOKS'),
+  LibFolder(r'E:\Documents\BOOKS I OWN'),
+  LibFolder(r'E:\Documents\BOOK Collections', collection: true),
+];
 
 class Settings extends ChangeNotifier {
   Settings._();
@@ -102,6 +114,9 @@ class Settings extends ChangeNotifier {
   bool progressLine = true;
   bool skipRead = false;
   bool pdfDarkPages = false;
+
+  /// PDFs: trim plain white or black borders around each page.
+  bool pdfCrop = false;
 
   /// What the mouse's back and forward buttons do in the reader: 'pages' or 'leave'.
   String mouseInReader = 'pages';
@@ -134,6 +149,7 @@ class Settings extends ChangeNotifier {
       progressLine = m['progressLine'] as bool? ?? true;
       skipRead = m['skipRead'] as bool? ?? false;
       pdfDarkPages = m['pdfDarkPages'] as bool? ?? false;
+      pdfCrop = m['pdfCrop'] as bool? ?? false;
       mouseInReader = m['mouseInReader'] == 'leave' ? 'leave' : 'pages';
       zipPasswords = ((m['zipPasswords'] as List?) ?? []).whereType<String>().toList();
       gridStyle = m['gridStyle'] as String? ?? gridStyle;
@@ -148,26 +164,27 @@ class Settings extends ChangeNotifier {
   }
 
   Map<String, dynamic> toJson() => {
-        'version': 1,
-        'folders': folders.map((f) => f.toJson()).toList(),
-        'showCollections': showCollections,
-        'style': style.toJson(),
-        'idleMinutes': idleMinutes,
-        'watchFolders': watchFolders,
-        'progressLine': progressLine,
-        'skipRead': skipRead,
-        'pdfDarkPages': pdfDarkPages,
-        'mouseInReader': mouseInReader,
-        'zipPasswords': zipPasswords,
-        'gridStyle': gridStyle,
-        'tileSize': tileSize,
-        'listView': listView,
-        'sort': sort,
-        'sortDesc': sortDesc,
-        'showContinue': showContinue,
-        'presets': presets,
-        'window': windowState,
-      };
+    'version': 1,
+    'folders': folders.map((f) => f.toJson()).toList(),
+    'showCollections': showCollections,
+    'style': style.toJson(),
+    'idleMinutes': idleMinutes,
+    'watchFolders': watchFolders,
+    'progressLine': progressLine,
+    'skipRead': skipRead,
+    'pdfDarkPages': pdfDarkPages,
+    'pdfCrop': pdfCrop,
+    'mouseInReader': mouseInReader,
+    'zipPasswords': zipPasswords,
+    'gridStyle': gridStyle,
+    'tileSize': tileSize,
+    'listView': listView,
+    'sort': sort,
+    'sortDesc': sortDesc,
+    'showContinue': showContinue,
+    'presets': presets,
+    'window': windowState,
+  };
 
   /// Changes apply straight away; there's no Save button.
   void save() {
@@ -197,6 +214,7 @@ class Settings extends ChangeNotifier {
     progressLine = true;
     skipRead = false;
     pdfDarkPages = false;
+    pdfCrop = false;
     mouseInReader = 'pages';
     gridStyle = 'comfortable';
     tileSize = 168;

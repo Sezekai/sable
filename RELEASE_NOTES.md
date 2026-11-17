@@ -1,11 +1,27 @@
-Sable 1.1.2
+Sable 1.2.0
 
-Brought over from Shiori, which had the same start-up crash:
-- The log is written to disk line by line, so its last lines survive if Sable ever stops unexpectedly. (In 1.0.0, the end of the log was lost.)
-- After an unexpected stop, the next run copies the end of the previous run's log into its own log, next to the crash report.
-- A heartbeat line every 30 seconds records memory use and what Sable was doing.
-- Safe mode (after two unexpected stops in a row) also pauses background cover making, not just folder watching.
-- Files are saved under a unique temporary name first, so two parts of Sable saving the same cover at once can't clash.
-- The self-test now resizes the library grid quickly with accessibility on, which is exactly what used to crash.
+Reader
+- Margins: set the side margins and the top and bottom margins separately.
+- Text colour: pick any colour for the book's text (or go back to the theme's).
+- Moving the mouse shows the controls; when it stops, the controls and the pointer hide again (unless the mouse is over the controls).
+- Space shows the controls and keeps them up until you press Space again or Esc. (Space no longer turns the page; PgDn and → still do.)
+- M opens the controls as a keyboard menu: arrow keys move, Space or Enter choose, M, Esc or a click on the page closes it.
+- Every control at the top now has its name under its icon.
+- PDFs: "Crop borders" trims plain white or black margins around each page (C, or the Crop button at the top).
+- S opens the reading settings.
 
-Includes the 1.1.1 crash fix and everything from 1.1.0. Download `Sable-v1.1.2-windows.zip`, then replace the `App` folder in `E:\Pictures\Sable\` with the new one. Your library and settings are kept.
+Everywhere
+- K shows the keyboard shortcuts on every screen, including the reader and over dialogs.
+- App size and reader controls size can be typed exactly, like 103%.
+- Settings show in two columns when the window is wide, maximised or full screen.
+
+History
+- Each entry has a Continue button next to its title, and entries have a faint line between them.
+
+Library
+- All / Books / LNs switch next to the Library title.
+- Filter by library folder (LIGHT NOVELS, BOOKS, BOOKS I OWN, BOOK Collections): the folder box next to Filters, or show-only / leave-out in the Filters panel.
+- A clear-all-filters button next to Filters.
+- The mouse wheel scrolls twice as far per notch.
+
+Download `Sable-v1.2.0-windows.zip`, then replace the `App` folder in `E:\Pictures\Sable\` with the new one. Your library and settings are kept.

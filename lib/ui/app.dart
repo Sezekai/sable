@@ -34,6 +34,7 @@ class Nav extends ChangeNotifier {
   bool panelsHidden = false;
   bool logOpen = false;
   bool keysOpen = false;
+  DateTime _keysAt = DateTime(0);
   bool fullScreen = false;
   bool readerOpen = false;
   final FocusNode searchFocus = FocusNode();
@@ -127,6 +128,10 @@ class Nav extends ChangeNotifier {
       case 'log':
         logOpen = !logOpen;
       case 'keys':
+        // The same K can reach the app twice (from the book page and the keyboard).
+        final now = DateTime.now();
+        if (now.difference(_keysAt) < const Duration(milliseconds: 150)) return;
+        _keysAt = now;
         keysOpen = !keysOpen;
     }
     notifyListeners();
@@ -143,11 +148,11 @@ class Nav extends ChangeNotifier {
   void changed() => notifyListeners();
 
   String get screenName => switch (page) {
-        PageId.library => detail == null ? 'Library' : (detailIsSeries ? 'Series' : 'Book'),
-        PageId.history => 'History',
-        PageId.stats => 'Stats',
-        PageId.settings => 'Settings',
-      };
+    PageId.library => detail == null ? 'Library' : (detailIsSeries ? 'Series' : 'Book'),
+    PageId.history => 'History',
+    PageId.stats => 'Stats',
+    PageId.settings => 'Settings',
+  };
 }
 
 final GlobalKey<NavigatorState> navKey = GlobalKey<NavigatorState>();
@@ -164,7 +169,19 @@ class SableApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         title: 'Sable',
         theme: Look.I.themeData(),
-        builder: (context, child) => UiScale(scale: Look.I.appScale, child: child ?? const SizedBox()),
+        // The shortcuts popup sits over everything: the library, the reader and dialogs.
+        builder: (context, child) => UiScale(
+          scale: Look.I.appScale,
+          child: ListenableBuilder(
+            listenable: Nav.I,
+            builder: (_, _) => Stack(
+              children: [
+                Positioned.fill(child: child ?? const SizedBox()),
+                if (Nav.I.keysOpen) const KeysPopup(),
+              ],
+            ),
+          ),
+        ),
         home: home ?? const Shell(),
       ),
     );
@@ -192,6 +209,23 @@ class _ShellState extends State<Shell> {
     super.initState();
     Nav.I.railHidden = Settings.I.windowState['railHidden'] == true;
     AppLog.I.addListener(_onLog);
+    HardwareKeyboard.instance.addHandler(_globalKey);
+  }
+
+  /// K shows the shortcuts on every screen, over the reader and dialogs too.
+  bool _globalKey(KeyEvent e) {
+    if (e is! KeyDownEvent) return Nav.I.keysOpen;
+    final k = e.logicalKey;
+    final kb = HardwareKeyboard.instance;
+    if (Nav.I.keysOpen) {
+      if (k == LogicalKeyboardKey.keyK || k == LogicalKeyboardKey.escape) Nav.I.toggle('keys');
+      return true; // nothing else happens while the shortcuts are showing
+    }
+    if (k == LogicalKeyboardKey.keyK && !typingInField && !kb.isControlPressed && !kb.isAltPressed && !kb.isMetaPressed) {
+      Nav.I.toggle('keys');
+      return true;
+    }
+    return false;
   }
 
   int _seenErrors = 0;
@@ -208,6 +242,7 @@ class _ShellState extends State<Shell> {
   @override
   void dispose() {
     AppLog.I.removeListener(_onLog);
+    HardwareKeyboard.instance.removeHandler(_globalKey);
     super.dispose();
   }
 
@@ -286,30 +321,35 @@ class _ShellState extends State<Shell> {
           if (e.buttons & kForwardMouseButton != 0) Nav.I.forward();
         },
         child: ListenableBuilder(
-        listenable: Nav.I,
-        builder: (context, _) {
-          final nav = Nav.I;
-          return Scaffold(
-            backgroundColor: tk.ground,
-            body: Stack(children: [
-              if (lk.starlight) const Positioned.fill(child: StarField()),
-              Column(children: [
-                if (!nav.fullScreen) const TitleBar(),
-                Expanded(
-                  child: Row(children: [
-                    if (!nav.railHidden && !nav.panelsHidden) const Rail(),
-                    Expanded(child: _content(nav)),
-                  ]),
-                ),
-                if (!nav.panelsHidden) const StatusBar(),
-              ]),
-              if (nav.logOpen) const Positioned(left: 0, right: 0, bottom: 36, child: LogDrawer()),
-              if (nav.keysOpen) const KeysPopup(),
-              const ToastLayer(),
-            ]),
-          );
-        },
-      ),
+          listenable: Nav.I,
+          builder: (context, _) {
+            final nav = Nav.I;
+            return Scaffold(
+              backgroundColor: tk.ground,
+              body: Stack(
+                children: [
+                  if (lk.starlight) const Positioned.fill(child: StarField()),
+                  Column(
+                    children: [
+                      if (!nav.fullScreen) const TitleBar(),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            if (!nav.railHidden && !nav.panelsHidden) const Rail(),
+                            Expanded(child: _content(nav)),
+                          ],
+                        ),
+                      ),
+                      if (!nav.panelsHidden) const StatusBar(),
+                    ],
+                  ),
+                  if (nav.logOpen) const Positioned(left: 0, right: 0, bottom: 36, child: LogDrawer()),
+                  const ToastLayer(),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -342,18 +382,23 @@ class TitleBar extends StatelessWidget {
     final isDesktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
     final bar = Container(
       height: 32,
-      decoration: BoxDecoration(color: lk.starlight ? Colors.transparent : tk.ground, border: Border(bottom: BorderSide(color: tk.line))),
-      child: Row(children: [
-        const SizedBox(width: 12),
-        Text('Sable', style: ts(size: 12, w: FontWeight.w600)),
-        ListenableBuilder(
-          listenable: Nav.I,
-          builder: (_, _) => Text('  ·  ${Nav.I.screenName}', style: ts(size: 12, c: tk.faint)),
-        ),
-        const Spacer(),
-        const StatusPills(),
-        if (isDesktop) const WindowButtons(),
-      ]),
+      decoration: BoxDecoration(
+        color: lk.starlight ? Colors.transparent : tk.ground,
+        border: Border(bottom: BorderSide(color: tk.line)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(width: 12),
+          Text('Sable', style: ts(size: 12, w: FontWeight.w600)),
+          ListenableBuilder(
+            listenable: Nav.I,
+            builder: (_, _) => Text('  ·  ${Nav.I.screenName}', style: ts(size: 12, c: tk.faint)),
+          ),
+          const Spacer(),
+          const StatusPills(),
+          if (isDesktop) const WindowButtons(),
+        ],
+      ),
     );
     if (!isDesktop) return bar;
     return GestureDetector(
@@ -396,23 +441,25 @@ class _WindowButtonsState extends State<WindowButtons> with WindowListener {
   void onWindowUnmaximize() => setState(() => maxed = false);
 
   Widget _b(IconData icon, VoidCallback onTap, {bool close = false}) => Hoverable(
-        builder: (h) => GestureDetector(
-          onTap: onTap,
-          child: Container(
-            width: 46,
-            height: 31,
-            color: h ? (close ? const Color(0xFFE81123) : tk.raised2) : Colors.transparent,
-            child: Icon(icon, size: 15, color: h && close ? Colors.white : tk.sec),
-          ),
-        ),
-      );
+    builder: (h) => GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 46,
+        height: 31,
+        color: h ? (close ? const Color(0xFFE81123) : tk.raised2) : Colors.transparent,
+        child: Icon(icon, size: 15, color: h && close ? Colors.white : tk.sec),
+      ),
+    ),
+  );
 
   @override
-  Widget build(BuildContext context) => Row(children: [
-        _b(Icons.remove, () => windowManager.minimize()),
-        _b(maxed ? Icons.filter_none : Icons.crop_square, () => maxed ? windowManager.unmaximize() : windowManager.maximize()),
-        _b(Icons.close, () => windowManager.close(), close: true),
-      ]);
+  Widget build(BuildContext context) => Row(
+    children: [
+      _b(Icons.remove, () => windowManager.minimize()),
+      _b(maxed ? Icons.filter_none : Icons.crop_square, () => maxed ? windowManager.unmaximize() : windowManager.maximize()),
+      _b(Icons.close, () => windowManager.close(), close: true),
+    ],
+  );
 }
 
 class StatusPills extends StatelessWidget {
@@ -433,16 +480,19 @@ class StatusPills extends StatelessWidget {
             margin: const EdgeInsets.only(right: 8),
             padding: const EdgeInsets.symmetric(horizontal: 10),
             decoration: BoxDecoration(color: lk.tint(tk.raised, 0.2), borderRadius: BorderRadius.circular(11)),
-            child: Row(children: [
-              Icon(Icons.circle, size: 7, color: j.stalled ? tk.warn : lk.acc),
-              const SizedBox(width: 6),
-              Text(
+            child: Row(
+              children: [
+                Icon(Icons.circle, size: 7, color: j.stalled ? tk.warn : lk.acc),
+                const SizedBox(width: 6),
+                Text(
                   '${j.name}${j.total != null ? ' ${j.done}/${j.total}' : ''}${f != null ? ' · ${(f * 100).floor()}%' : ''}'
                   '${count > 0 ? ' · $count more queued' : ''}',
-                  style: ts(size: 11.5, w: FontWeight.w600, tab: true)),
-              const SizedBox(width: 8),
-              SizedBox(width: 40, child: Progress(value: f, height: 4)),
-            ]),
+                  style: ts(size: 11.5, w: FontWeight.w600, tab: true),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(width: 40, child: Progress(value: f, height: 4)),
+              ],
+            ),
           ),
         );
       },
@@ -460,20 +510,23 @@ class Rail extends StatelessWidget {
   Widget _build(BuildContext context) {
     final nav = Nav.I;
     Widget item(IconData icon, String label, bool active, VoidCallback onTap, {int? badge}) => Hoverable(
-          builder: (h) => GestureDetector(
-            onTap: onTap,
-            child: MouseRegion(
-              cursor: SystemMouseCursors.click,
-              child: Container(
-                width: 56,
-                margin: const EdgeInsets.symmetric(vertical: 2),
-                padding: const EdgeInsets.symmetric(vertical: 6),
-                decoration: BoxDecoration(
-                  color: active ? tk.raised : (h ? tk.raised.withValues(alpha: 0.5) : null),
-                  borderRadius: BorderRadius.circular(lk.rControl + 2),
-                ),
-                child: Column(children: [
-                  Stack(clipBehavior: Clip.none, children: [
+      builder: (h) => GestureDetector(
+        onTap: onTap,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            width: 56,
+            margin: const EdgeInsets.symmetric(vertical: 2),
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            decoration: BoxDecoration(
+              color: active ? tk.raised : (h ? tk.raised.withValues(alpha: 0.5) : null),
+              borderRadius: BorderRadius.circular(lk.rControl + 2),
+            ),
+            child: Column(
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
                     Icon(icon, size: 19, color: active ? lk.acc : tk.sec),
                     if (badge != null && badge > 0)
                       Positioned(
@@ -482,49 +535,61 @@ class Rail extends StatelessWidget {
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                           decoration: BoxDecoration(color: lk.acc, borderRadius: BorderRadius.circular(8)),
-                          child: Text('$badge', style: ts(size: 9.5, w: FontWeight.w700, c: lk.onAcc)),
+                          child: Text(
+                            '$badge',
+                            style: ts(size: 9.5, w: FontWeight.w700, c: lk.onAcc),
+                          ),
                         ),
                       ),
-                  ]),
-                  const SizedBox(height: 3),
-                  Text(label, style: ts(size: 11, c: active ? tk.text : tk.sec), textAlign: TextAlign.center,
-                      maxLines: 1, overflow: TextOverflow.ellipsis),
-                ]),
-              ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  label,
+                  style: ts(size: 11, c: active ? tk.text : tk.sec),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
           ),
-        );
+        ),
+      ),
+    );
     return Container(
       width: 64,
       color: lk.starlight ? tk.rail.withValues(alpha: 0.6) : tk.rail,
-      child: Column(children: [
-        const SizedBox(height: 8),
-        Container(
-          width: 36,
-          height: 36,
-          decoration: BoxDecoration(gradient: lk.grad, borderRadius: BorderRadius.circular(lk.rPanel)),
-          child: Icon(Icons.nightlight_round, size: 19, color: lk.onAcc),
-        ),
-        const SizedBox(height: 10),
-        item(Icons.auto_stories_outlined, 'Library', nav.page == PageId.library, () {
-          if (nav.page == PageId.library) {
-            nav.closeDetail();
-          } else {
-            nav.go(PageId.library);
-          }
-        }),
-        item(Icons.history, 'History', nav.page == PageId.history, () => nav.go(PageId.history)),
-        item(Icons.insights_outlined, 'Stats', nav.page == PageId.stats, () => nav.go(PageId.stats)),
-        item(Icons.settings_outlined, 'Settings', nav.page == PageId.settings, () => nav.go(PageId.settings)),
-        const Spacer(),
-        Container(height: 1, width: 40, color: tk.line, margin: const EdgeInsets.symmetric(vertical: 6)),
-        item(Icons.keyboard_outlined, 'Keys', nav.keysOpen, () => nav.toggle('keys')),
-        ListenableBuilder(
-          listenable: AppLog.I,
-          builder: (_, _) => item(Icons.receipt_long_outlined, 'Log', nav.logOpen, () => nav.toggle('log')),
-        ),
-        const SizedBox(height: 8),
-      ]),
+      child: Column(
+        children: [
+          const SizedBox(height: 8),
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(gradient: lk.grad, borderRadius: BorderRadius.circular(lk.rPanel)),
+            child: Icon(Icons.nightlight_round, size: 19, color: lk.onAcc),
+          ),
+          const SizedBox(height: 10),
+          item(Icons.auto_stories_outlined, 'Library', nav.page == PageId.library, () {
+            if (nav.page == PageId.library) {
+              nav.closeDetail();
+            } else {
+              nav.go(PageId.library);
+            }
+          }),
+          item(Icons.history, 'History', nav.page == PageId.history, () => nav.go(PageId.history)),
+          item(Icons.insights_outlined, 'Stats', nav.page == PageId.stats, () => nav.go(PageId.stats)),
+          item(Icons.settings_outlined, 'Settings', nav.page == PageId.settings, () => nav.go(PageId.settings)),
+          const Spacer(),
+          Container(height: 1, width: 40, color: tk.line, margin: const EdgeInsets.symmetric(vertical: 6)),
+          item(Icons.keyboard_outlined, 'Keys', nav.keysOpen, () => nav.toggle('keys')),
+          ListenableBuilder(
+            listenable: AppLog.I,
+            builder: (_, _) => item(Icons.receipt_long_outlined, 'Log', nav.logOpen, () => nav.toggle('log')),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 }
@@ -542,32 +607,40 @@ class StatusBar extends StatelessWidget {
         return Container(
           height: 36,
           padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(color: lk.starlight ? tk.panel.withValues(alpha: 0.85) : tk.panel, border: Border(top: BorderSide(color: tk.line))),
+          decoration: BoxDecoration(
+            color: lk.starlight ? tk.panel.withValues(alpha: 0.85) : tk.panel,
+            border: Border(top: BorderSide(color: tk.line)),
+          ),
           child: j == null ? _idle() : _running(j),
         );
       },
     );
   }
 
-  Widget _idle() => Row(children: [
-        Text('Ready', style: ts(w: FontWeight.w600)),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(Jobs.I.lastResult.isEmpty ? 'Nothing running' : Jobs.I.lastResult,
-              style: ts(c: Jobs.I.lastFailed ? tk.danger : tk.sec), overflow: TextOverflow.ellipsis),
+  Widget _idle() => Row(
+    children: [
+      Text('Ready', style: ts(w: FontWeight.w600)),
+      const SizedBox(width: 10),
+      Expanded(
+        child: Text(
+          Jobs.I.lastResult.isEmpty ? 'Nothing running' : Jobs.I.lastResult,
+          style: ts(c: Jobs.I.lastFailed ? tk.danger : tk.sec),
+          overflow: TextOverflow.ellipsis,
         ),
-        _libCount(),
-        const SizedBox(width: 10),
-        Btn.ghost('Log', icon: Icons.receipt_long_outlined, dense: true, onTap: () => Nav.I.toggle('log')),
-      ]);
+      ),
+      _libCount(),
+      const SizedBox(width: 10),
+      Btn.ghost('Log', icon: Icons.receipt_long_outlined, dense: true, onTap: () => Nav.I.toggle('log')),
+    ],
+  );
 
   Widget _libCount() => ListenableBuilder(
-        listenable: Library.I,
-        builder: (_, _) {
-          final n = Library.I.volumes.length;
-          return Text('$n books', style: ts(c: tk.faint, tab: true));
-        },
-      );
+    listenable: Library.I,
+    builder: (_, _) {
+      final n = Library.I.volumes.length;
+      return Text('$n books', style: ts(c: tk.faint, tab: true));
+    },
+  );
 
   Widget _running(Job j) {
     final f = j.fraction;
@@ -575,39 +648,47 @@ class StatusBar extends StatelessWidget {
     final queued = Jobs.I.queue.length;
     final stall = j.stalled;
     final stallFor = DateTime.now().difference(j.lastProgress).inSeconds;
-    return Row(children: [
-      Text(j.name, style: ts(w: FontWeight.w600)),
-      const SizedBox(width: 8),
-      Flexible(
-        flex: 3,
-        child: Text(
+    return Row(
+      children: [
+        Text(j.name, style: ts(w: FontWeight.w600)),
+        const SizedBox(width: 8),
+        Flexible(
+          flex: 3,
+          child: Text(
             '${j.detail}${j.total != null ? ' · ${j.done} of ${j.total}' : ''}${queued > 0 ? ' · $queued more queued' : ''}',
             style: ts(c: tk.sec, tab: true),
-            overflow: TextOverflow.ellipsis),
-      ),
-      const SizedBox(width: 12),
-      SizedBox(width: 180, child: Progress(value: j.paused ? f : f)),
-      const SizedBox(width: 8),
-      SizedBox(
-          width: 38,
-          child: Text(f == null ? '' : '${(f * 100).floor()}%', style: ts(tab: true, w: FontWeight.w600))),
-      Flexible(
-        flex: 3,
-        child: Text(
-          j.paused
-              ? 'Paused · ${formatDuration(j.elapsed)} elapsed'
-              : stall
-                  ? 'No progress for $stallFor s · the log shows what is running · ${formatDuration(j.elapsed)} elapsed'
-                  : '${formatDuration(j.elapsed)} elapsed · ${f == null ? 'size not known yet' : left == null ? 'working out time left…' : humanLeft(left)}',
-          style: ts(c: stall ? tk.warn : tk.sec, tab: true),
-          overflow: TextOverflow.ellipsis,
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
-      ),
-      const SizedBox(width: 8),
-      if (j.canPause) Btn.ghost(j.paused ? 'Resume' : 'Pause', dense: true, onTap: Jobs.I.togglePause),
-      Btn.ghost('Stop', dense: true, icon: Icons.stop_circle_outlined, onTap: Jobs.I.stop),
-      Btn.ghost('Log', dense: true, icon: Icons.receipt_long_outlined, onTap: () => Nav.I.toggle('log')),
-    ]);
+        const SizedBox(width: 12),
+        SizedBox(width: 180, child: Progress(value: j.paused ? f : f)),
+        const SizedBox(width: 8),
+        SizedBox(
+          width: 38,
+          child: Text(f == null ? '' : '${(f * 100).floor()}%', style: ts(tab: true, w: FontWeight.w600)),
+        ),
+        Flexible(
+          flex: 3,
+          child: Text(
+            j.paused
+                ? 'Paused · ${formatDuration(j.elapsed)} elapsed'
+                : stall
+                ? 'No progress for $stallFor s · the log shows what is running · ${formatDuration(j.elapsed)} elapsed'
+                : '${formatDuration(j.elapsed)} elapsed · ${f == null
+                      ? 'size not known yet'
+                      : left == null
+                      ? 'working out time left…'
+                      : humanLeft(left)}',
+            style: ts(c: stall ? tk.warn : tk.sec, tab: true),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(width: 8),
+        if (j.canPause) Btn.ghost(j.paused ? 'Resume' : 'Pause', dense: true, onTap: Jobs.I.togglePause),
+        Btn.ghost('Stop', dense: true, icon: Icons.stop_circle_outlined, onTap: Jobs.I.stop),
+        Btn.ghost('Log', dense: true, icon: Icons.receipt_long_outlined, onTap: () => Nav.I.toggle('log')),
+      ],
+    );
   }
 }
 
@@ -624,46 +705,67 @@ class LogDrawer extends StatelessWidget {
         border: Border(top: BorderSide(color: tk.line2)),
         boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 12)],
       ),
-      child: Column(children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 6, 8, 4),
-          child: Row(children: [
-            Text('Log', style: ts(w: FontWeight.w600)),
-            const SizedBox(width: 8),
-            Expanded(child: Text(AppLog.I.logDir ?? '', style: ts(c: tk.faint, size: 11.5, mono: true), overflow: TextOverflow.ellipsis)),
-            Btn.ghost('Copy', dense: true, onTap: () {
-              Clipboard.setData(ClipboardData(text: AppLog.I.lines.join('\n')));
-              toast('Log copied');
-            }),
-            Btn.ghost('Clear', dense: true, onTap: AppLog.I.clear),
-            Btn.ghost('Close', dense: true, onTap: () => Nav.I.toggle('log')),
-          ]),
-        ),
-        Expanded(
-          child: ListenableBuilder(
-            listenable: AppLog.I,
-            builder: (_, _) {
-              final lines = AppLog.I.lines;
-              return Container(
-                color: tk.field,
-                child: ListView.builder(
-                  reverse: true,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  itemCount: lines.length,
-                  itemBuilder: (_, i) {
-                    final l = lines[lines.length - 1 - i];
-                    return Text(l,
-                        style: ts(
-                            mono: true,
-                            size: 11.5,
-                            c: l.contains('ERROR') ? tk.danger : l.contains('WARN') ? tk.warn : tk.sec));
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 6, 8, 4),
+            child: Row(
+              children: [
+                Text('Log', style: ts(w: FontWeight.w600)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    AppLog.I.logDir ?? '',
+                    style: ts(c: tk.faint, size: 11.5, mono: true),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                Btn.ghost(
+                  'Copy',
+                  dense: true,
+                  onTap: () {
+                    Clipboard.setData(ClipboardData(text: AppLog.I.lines.join('\n')));
+                    toast('Log copied');
                   },
                 ),
-              );
-            },
+                Btn.ghost('Clear', dense: true, onTap: AppLog.I.clear),
+                Btn.ghost('Close', dense: true, onTap: () => Nav.I.toggle('log')),
+              ],
+            ),
           ),
-        ),
-      ]),
+          Expanded(
+            child: ListenableBuilder(
+              listenable: AppLog.I,
+              builder: (_, _) {
+                final lines = AppLog.I.lines;
+                return Container(
+                  color: tk.field,
+                  child: ListView.builder(
+                    reverse: true,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    itemCount: lines.length,
+                    itemBuilder: (_, i) {
+                      final l = lines[lines.length - 1 - i];
+                      return Text(
+                        l,
+                        style: ts(
+                          mono: true,
+                          size: 11.5,
+                          c: l.contains('ERROR')
+                              ? tk.danger
+                              : l.contains('WARN')
+                              ? tk.warn
+                              : tk.sec,
+                        ),
+                      );
+                    },
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -671,52 +773,66 @@ class LogDrawer extends StatelessWidget {
 // ---------------- keyboard shortcuts popup ----------------
 
 const keyGroups = <(String, List<(String, String)>)>[
-  ('Anywhere', [
-    ('K', 'Keyboard shortcuts'),
-    ('/', 'Search the library'),
-    ('Ctrl+F', 'Search the library'),
-    ('F, F11', 'Full screen'),
-    ('H', 'Hide panels'),
-    ('M', 'Show or hide the sidebar'),
-    ('L', 'Open or close the log'),
-    ('S', 'Settings'),
-    ('Esc', 'Close, innermost first'),
-  ]),
-  ('Library', [
-    ('Click', 'Open a book or series'),
-    ('Double-click', 'Read or continue'),
-    ('Ctrl+click', 'Tick'),
-    ('Shift+click', 'Tick a range'),
-    ('Ctrl+A', 'Tick everything shown'),
-    ('R', 'Random book'),
-    ('+ −, Ctrl+wheel', 'Bigger or smaller covers'),
-    ('Backspace', 'Back to the library'),
-    ('Mouse ◀ ▶', 'Back / forward through where you\'ve been'),
-  ]),
-  ('Reader', [
-    ('← →', 'Previous / next page'),
-    ('PgUp PgDn, Space', 'Previous / next page'),
-    ('Home End', 'Start / end of the chapter'),
-    ('+ −', 'Text size'),
-    ('D', 'One or two pages'),
-    ('T', 'Contents'),
-    ('B', 'Bookmark this page'),
-    ('/', 'Search in the book'),
-    ('V', 'Favourite'),
-    ('N', 'Next volume'),
-    ('Mouse ◀ ▶', 'Previous / next page (can be changed)'),
-    ('Esc', 'Close the reader'),
-  ]),
-  ('Pictures', [
-    ('Click a picture', 'Open it full screen'),
-    ('← →', 'Previous / next picture in the book'),
-    ('Wheel, drag', 'Zoom, move'),
-    ('Esc, click outside', 'Close'),
-  ]),
-  ('Dialogs', [
-    ('Enter', 'Confirm'),
-    ('Esc', 'Cancel'),
-  ]),
+  (
+    'Anywhere',
+    [
+      ('K', 'Keyboard shortcuts'),
+      ('/', 'Search the library'),
+      ('Ctrl+F', 'Search the library'),
+      ('F, F11', 'Full screen'),
+      ('H', 'Hide panels'),
+      ('M', 'Show or hide the sidebar (in the reader: the controls menu)'),
+      ('L', 'Open or close the log'),
+      ('S', 'Settings'),
+      ('Esc', 'Close, innermost first'),
+    ],
+  ),
+  (
+    'Library',
+    [
+      ('Click', 'Open a book or series'),
+      ('Double-click', 'Read or continue'),
+      ('Ctrl+click', 'Tick'),
+      ('Shift+click', 'Tick a range'),
+      ('Ctrl+A', 'Tick everything shown'),
+      ('R', 'Random book'),
+      ('+ −, Ctrl+wheel', 'Bigger or smaller covers'),
+      ('Backspace', 'Back to the library'),
+      ('Mouse ◀ ▶', 'Back / forward through where you\'ve been'),
+    ],
+  ),
+  (
+    'Reader',
+    [
+      ('← →', 'Previous / next page'),
+      ('PgUp PgDn', 'Previous / next page'),
+      ('Move the mouse', 'Show the controls for a moment'),
+      ('Space, H, Enter', 'Show the controls until pressed again (or Esc)'),
+      ('M', 'Controls menu: arrows move, Space/Enter choose, M/Esc close'),
+      ('S', 'Reading settings'),
+      ('C', 'Crop page borders (PDF)'),
+      ('Home End', 'Start / end of the chapter'),
+      ('+ −', 'Text size'),
+      ('D', 'One or two pages'),
+      ('T', 'Contents'),
+      ('B', 'Bookmark this page'),
+      ('/', 'Search in the book'),
+      ('V', 'Favourite'),
+      ('N', 'Next volume'),
+      ('Mouse ◀ ▶', 'Previous / next page (can be changed)'),
+      ('Esc', 'Close the reader'),
+    ],
+  ),
+  (
+    'Pictures',
+    [
+      ('Click a picture', 'Open it full screen'),
+      ('← →', 'Previous / next picture in the book'),
+      ('Wheel, drag', 'Zoom, move'),
+      ('Esc, click outside', 'Close'),
+    ],
+  ),
+  ('Dialogs', [('Enter', 'Confirm'), ('Esc', 'Cancel')]),
 ];
 
 class KeysPopup extends StatelessWidget {
@@ -731,74 +847,95 @@ class KeysPopup extends StatelessWidget {
           alignment: Alignment.center,
           child: GestureDetector(
             onTap: () {},
-            child: LayoutBuilder(builder: (context, c) {
-              final maxW = c.maxWidth - 48;
-              final maxH = c.maxHeight - 48;
-              final cols = (maxW / 340).floor().clamp(1, 4);
-              return ConstrainedBox(
-                constraints: BoxConstraints(maxWidth: cols * 340.0 + 40, maxHeight: maxH),
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: tk.panel,
-                    borderRadius: BorderRadius.circular(lk.rPanel),
-                    border: Border.all(color: tk.line2),
-                    boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 24)],
-                  ),
-                  child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Row(children: [
-                      Text('Keyboard shortcuts', style: ts(size: lk.fontSize + 2, w: FontWeight.w700)),
-                      const SizedBox(width: 10),
-                      Text('K or Esc closes', style: ts(size: 12, c: tk.faint)),
-                    ]),
-                    const SizedBox(height: 14),
-                    Flexible(
-                      child: SingleChildScrollView(
-                        child: Wrap(
-                          spacing: 20,
-                          runSpacing: 12,
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final maxW = c.maxWidth - 48;
+                final maxH = c.maxHeight - 48;
+                final cols = (maxW / 340).floor().clamp(1, 4);
+                return ConstrainedBox(
+                  constraints: BoxConstraints(maxWidth: cols * 340.0 + 40, maxHeight: maxH),
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: tk.panel,
+                      borderRadius: BorderRadius.circular(lk.rPanel),
+                      border: Border.all(color: tk.line2),
+                      boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 24)],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            for (final g in keyGroups)
-                              SizedBox(
-                                width: 320,
-                                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                  Text(g.$1, style: ts(size: 12, c: tk.sec, w: FontWeight.w600)),
-                                  const SizedBox(height: 6),
-                                  for (final k in g.$2)
-                                    Padding(
-                                      padding: const EdgeInsets.symmetric(vertical: 2),
-                                      child: Row(children: [
-                                        SizedBox(
-                                          width: 120,
-                                          child: Align(
-                                            alignment: Alignment.centerLeft,
-                                            child: Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                                              decoration: BoxDecoration(
-                                                  color: tk.raised,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                  border: Border.all(color: tk.line2)),
-                                              child: Text(k.$1, style: ts(mono: true, size: 11.5)),
-                                            ),
-                                          ),
-                                        ),
-                                        Expanded(child: Text(k.$2, style: ts(c: tk.sec))),
-                                      ]),
-                                    ),
-                                ]),
-                              ),
+                            Text(
+                              'Keyboard shortcuts',
+                              style: ts(size: lk.fontSize + 2, w: FontWeight.w700),
+                            ),
+                            const SizedBox(width: 10),
+                            Text('K or Esc closes', style: ts(size: 12, c: tk.faint)),
                           ],
                         ),
-                      ),
+                        const SizedBox(height: 14),
+                        Flexible(
+                          child: SingleChildScrollView(
+                            child: Wrap(
+                              spacing: 20,
+                              runSpacing: 12,
+                              children: [
+                                for (final g in keyGroups)
+                                  SizedBox(
+                                    width: 320,
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          g.$1,
+                                          style: ts(size: 12, c: tk.sec, w: FontWeight.w600),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        for (final k in g.$2)
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(vertical: 2),
+                                            child: Row(
+                                              children: [
+                                                SizedBox(
+                                                  width: 120,
+                                                  child: Align(
+                                                    alignment: Alignment.centerLeft,
+                                                    child: Container(
+                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                                      decoration: BoxDecoration(
+                                                        color: tk.raised,
+                                                        borderRadius: BorderRadius.circular(4),
+                                                        border: Border.all(color: tk.line2),
+                                                      ),
+                                                      child: Text(k.$1, style: ts(mono: true, size: 11.5)),
+                                                    ),
+                                                  ),
+                                                ),
+                                                Expanded(
+                                                  child: Text(k.$2, style: ts(c: tk.sec)),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ]),
-                ),
-              );
-            }),
+                  ),
+                );
+              },
+            ),
           ),
         ),
       ),
     );
   }
 }
-

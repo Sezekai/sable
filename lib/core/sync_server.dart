@@ -89,6 +89,11 @@ class SyncServer extends ChangeNotifier {
 
   static String _newCode() => List.generate(6, (_) => Random.secure().nextInt(10)).join();
 
+  /// Reads the saved pairing before anything shows it.
+  void ensureLoaded() {
+    if (pcId.isEmpty) _load();
+  }
+
   void newCode() {
     code = _newCode();
     _save();

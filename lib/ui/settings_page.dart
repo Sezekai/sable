@@ -1040,6 +1040,7 @@ class _PcPhoneState extends State<_PcPhone> {
   @override
   void initState() {
     super.initState();
+    SyncServer.I.ensureLoaded();
     SyncServer.I.addresses().then((a) {
       if (mounted) setState(() => addresses = a);
     });
@@ -1065,7 +1066,7 @@ class _PcPhoneState extends State<_PcPhone> {
             Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
               Text('Pairing code', style: ts(c: tk.sec)),
               const SizedBox(width: 14),
-              SelectableText('${sv.code.substring(0, 3)} ${sv.code.substring(3)}',
+              SelectableText(sv.code.length == 6 ? '${sv.code.substring(0, 3)} ${sv.code.substring(3)}' : sv.code,
                   style: ts(size: 24, w: FontWeight.w700, mono: true, c: lk.acc)),
               const SizedBox(width: 14),
               Btn.ghost('New code', icon: Icons.refresh, dense: true, onTap: sv.newCode),

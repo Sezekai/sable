@@ -140,6 +140,10 @@ class ReaderPageState extends State<ReaderPage> {
   // The controls: the mouse brings them up for a moment; Space pins them; M opens
   // them as a keyboard menu.
   bool pinned = false;
+
+  /// Phone: the rest of the top controls are showing; the bottom bar shows all its text.
+  bool moreOpen = false;
+  bool bottomOpen = false;
   bool menu = false;
   int menuIndex = 0;
   bool cursorHidden = false;
@@ -251,6 +255,10 @@ class ReaderPageState extends State<ReaderPage> {
         tracker.activity();
       case 'key':
         tracker.activity();
+        if (m['typing'] == true) {
+          _typeKey(m['key'] as String? ?? '', m['ctrl'] == true);
+          return;
+        }
         _onJsKey(m['key'] as String? ?? '', ctrl: m['ctrl'] == true);
         return;
       case 'search':
@@ -401,7 +409,7 @@ class ReaderPageState extends State<ReaderPage> {
 
   void changeSize(double d) {
     final s = Settings.I.style;
-    s.size = (s.size + d).clamp(12, 36);
+    s.size = (s.size + d).clamp(10, 48);
     _styleChanged();
   }
 
@@ -531,21 +539,20 @@ class ReaderPageState extends State<ReaderPage> {
   });
 
   /// The controls along the top, in order, for the bar and for the M menu.
+  /// The controls along the top, in order, for the bar and for the M menu.
+  /// On a folded phone the first five show (back, search, contents, settings,
+  /// text & spacing) and the rest are behind "More".
   List<_Ctl> get _controls {
     final v = volume;
     final bms = Db.I.bookmarks(book.id);
     return [
       _Ctl(Icons.arrow_back, 'Back', 'Back to the library (Esc)', () => Navigator.of(context).pop()),
       if (!isPdf)
-        _Ctl(
-          Icons.search,
-          'Search',
-          'Search in the book (/)',
-          () => togglePanel('search'),
-          active: panel == 'search',
-          closes: true,
-        ),
+        _Ctl(Icons.search, 'Search', 'Search in the book (/)', () => togglePanel('search'), active: panel == 'search', closes: true),
       _Ctl(Icons.toc, 'Contents', 'Contents (T)', () => togglePanel('contents'), active: panel == 'contents', closes: true),
+      _Ctl(Icons.tune, 'Settings', 'Reader settings (S)', () => togglePanel('style'), active: panel == 'style', closes: true),
+      if (!isPdf)
+        _Ctl(Icons.format_size, 'Text', 'Text & spacing (A)', () => togglePanel('text'), active: panel == 'text', closes: true),
       _Ctl(
         Icons.bookmarks_outlined,
         'Bookmarks',
@@ -563,21 +570,13 @@ class ReaderPageState extends State<ReaderPage> {
         color: v?.favourite == true ? lk.acc : null,
       ),
       if (isPdf) _Ctl(Icons.crop, 'Crop', 'Crop the page borders (C)', toggleCrop, active: Settings.I.pdfCrop),
-      _Ctl(
-        Icons.text_fields,
-        'Settings',
-        'Reading settings (S)',
-        () => togglePanel('style'),
-        active: panel == 'style',
-        closes: true,
-      ),
       if (!isPhone)
-      _Ctl(
-        Nav.I.fullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
-        'Full screen',
-        'Full screen (F)',
-        () => Nav.I.toggleFullScreen().then((_) => isDesktop ? windowManager.focus() : null),
-      ),
+        _Ctl(
+          Nav.I.fullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+          'Full screen',
+          'Full screen (F)',
+          () => Nav.I.toggleFullScreen().then((_) => isDesktop ? windowManager.focus() : null),
+        ),
     ];
   }
 
@@ -668,6 +667,8 @@ class ReaderPageState extends State<ReaderPage> {
         togglePinned();
       case 's':
         togglePanel('style');
+      case 'a':
+        if (!isPdf) togglePanel('text');
       case 'c':
         if (isPdf) toggleCrop();
       case 'k':
@@ -743,6 +744,7 @@ class ReaderPageState extends State<ReaderPage> {
 
   @override
   Widget build(BuildContext context) {
+    _syncTyping();
     final t = tk;
     // Hidden controls can't be under the mouse (their regions don't report leaving).
     if (!chrome) _hover.removeWhere((h) => h != 'panel');
@@ -777,7 +779,14 @@ class ReaderPageState extends State<ReaderPage> {
               child: Stack(
                 children: [
                   // The book itself is drawn at the screen's own size, so it stays sharp.
-                  Positioned.fill(
+                  // A phone can keep the text clear of the camera notch and the status line.
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: isPhone && Settings.I.style.clearNotch ? MediaQuery.viewPaddingOf(context).top : 0,
+                    bottom: isPhone && Settings.I.style.clearStatus
+                        ? (_statusH * Look.I.readerScale + MediaQuery.viewPaddingOf(context).bottom)
+                        : 0,
                     child: UiScale(scale: 1 / Look.I.appScale, child: _engine()),
                   ),
                   // The bars and panels follow "Reader controls size".
@@ -787,8 +796,8 @@ class ReaderPageState extends State<ReaderPage> {
                       child: SafeArea(child: Stack(
                         children: [
                           if (!chrome && error == null) _statusLine(),
-                          if (chrome) _topBar(),
-                          if (chrome) _bottomBar(),
+                          if (chrome && !(isPhone && panel != null)) _topBar(),
+                          if (chrome && !(isPhone && panel != null)) _bottomBar(),
                           if (panel != null) _panel(),
                           if (endCard) _end(),
                           const ToastLayer(),
@@ -941,10 +950,11 @@ class ReaderPageState extends State<ReaderPage> {
       left: 0,
       right: 0,
       bottom: 0,
-      height: 40,
+      height: isPhone ? _statusH : 40,
       child: IgnorePointer(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 22),
+          // A phone: low down and out in the corners.
+          padding: EdgeInsets.symmetric(horizontal: isPhone ? 10 : 22),
           child: Row(
             children: [
               Expanded(
@@ -960,6 +970,9 @@ class ReaderPageState extends State<ReaderPage> {
     );
   }
 
+  /// The status line's height on a phone (kept clear of the text when asked).
+  static const _statusH = 20.0;
+
   BoxDecoration get _barDeco => BoxDecoration(
     color: tk.panel.withValues(alpha: 0.96),
     border: Border.all(color: tk.line),
@@ -969,80 +982,127 @@ class ReaderPageState extends State<ReaderPage> {
 
   Widget _topBar() {
     final ctls = _controls;
+    Widget btn(int i) => _LabelBtn(ctls[i], focused: menu && menuIndex == i, onTap: () => _tapCtl(i), compact: isPhone);
+    if (isPhone) {
+      // A phone: right at the top (just under the camera), compact. Folded,
+      // it shows back plus four controls, and "More" for the rest.
+      final wide = MediaQuery.sizeOf(context).width / Look.I.readerScale >= ctls.length * 60 + 40;
+      final shown = wide ? ctls.length : (ctls.length < 5 ? ctls.length : 5);
+      return Positioned(
+        left: 4,
+        right: 4,
+        top: 0,
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(2, 2, 2, 2),
+          decoration: _barDeco,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  for (var i = 0; i < shown; i++) btn(i),
+                  if (shown < ctls.length)
+                    _LabelBtn(
+                      _Ctl(moreOpen ? Icons.expand_less : Icons.expand_more, moreOpen ? 'Less' : 'More', 'More controls', () {}),
+                      focused: false,
+                      compact: true,
+                      onTap: () => setState(() => moreOpen = !moreOpen),
+                    ),
+                ],
+              ),
+              if (moreOpen || wide)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 2, 8, 4),
+                  child: Text(
+                    chapter.isEmpty ? _title : '$_title · $chapter',
+                    style: ts(size: 12, c: tk.sec),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              if (moreOpen && shown < ctls.length)
+                Wrap(
+                  alignment: WrapAlignment.start,
+                  children: [for (var i = shown; i < ctls.length; i++) btn(i)],
+                ),
+            ],
+          ),
+        ),
+      );
+    }
     return Positioned(
       left: 10,
       right: 10,
       top: 10,
       child: _hoverZone(
         'top',
-        LayoutBuilder(builder: (context, box) {
-          // A narrow screen (a phone): the title on one line, the controls on a
-          // second line that scrolls sideways.
-          if (box.maxWidth < ctls.length * 70 + 220) {
-            return Container(
-              padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
-              decoration: _barDeco,
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Row(children: [
-                  _LabelBtn(ctls.first, focused: menu && menuIndex == 0, onTap: () => _tapCtl(0)),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      Text(_title, style: ts(w: FontWeight.w600), overflow: TextOverflow.ellipsis, maxLines: 2),
-                      if (chapter.isNotEmpty)
-                        Text(chapter, style: ts(size: 11.5, c: tk.faint), overflow: TextOverflow.ellipsis),
-                    ]),
-                  ),
-                ]),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(children: [
-                    for (var i = 1; i < ctls.length; i++)
-                      _LabelBtn(ctls[i], focused: menu && menuIndex == i, onTap: () => _tapCtl(i)),
-                  ]),
-                ),
-              ]),
-            );
-          }
-          return Container(
-          height: 60,
-          padding: const EdgeInsets.symmetric(horizontal: 6),
-          decoration: _barDeco,
-          child: Row(
-            children: [
-              _LabelBtn(ctls.first, focused: menu && menuIndex == 0, onTap: () => _tapCtl(0)),
-              const SizedBox(width: 8),
-              Expanded(
+        LayoutBuilder(
+          builder: (context, box) {
+            // A narrow window: the title on one line, the controls on a
+            // second line that scrolls sideways.
+            if (box.maxWidth < ctls.length * 70 + 220) {
+              return Container(
+                padding: const EdgeInsets.fromLTRB(6, 4, 6, 4),
+                decoration: _barDeco,
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      _title,
-                      style: ts(w: FontWeight.w600),
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        btn(0),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(_title, style: ts(w: FontWeight.w600), overflow: TextOverflow.ellipsis, maxLines: 2),
+                              if (chapter.isNotEmpty) Text(chapter, style: ts(size: 11.5, c: tk.faint), overflow: TextOverflow.ellipsis),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                    if (chapter.isNotEmpty && !menu)
-                      Text(
-                        chapter,
-                        style: ts(size: 11.5, c: tk.faint),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    if (menu)
-                      Text(
-                        '← → move · Enter or Space choose · M or Esc close',
-                        style: ts(size: 11, c: lk.acc),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(children: [for (var i = 1; i < ctls.length; i++) btn(i)]),
+                    ),
                   ],
                 ),
+              );
+            }
+            return Container(
+              height: 60,
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              decoration: _barDeco,
+              child: Row(
+                children: [
+                  btn(0),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(_title, style: ts(w: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                        if (chapter.isNotEmpty && !menu) Text(chapter, style: ts(size: 11.5, c: tk.faint), overflow: TextOverflow.ellipsis),
+                        if (menu)
+                          Text(
+                            '← → move · Enter or Space choose · M or Esc close',
+                            style: ts(size: 11, c: lk.acc),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                      ],
+                    ),
+                  ),
+                  for (var i = 1; i < ctls.length; i++) btn(i),
+                ],
               ),
-              for (var i = 1; i < ctls.length; i++) _LabelBtn(ctls[i], focused: menu && menuIndex == i, onTap: () => _tapCtl(i)),
-            ],
-          ),
-        );
-        }),
+            );
+          },
+        ),
       ),
     );
   }
@@ -1064,9 +1124,9 @@ class ReaderPageState extends State<ReaderPage> {
         ? (minTotal == null ? '' : '${_mins(minTotal)} left in the book')
         : '${_mins(minSection)} left in the chapter · ${_mins(minTotal)} left in the book';
     return Positioned(
-      left: 10,
-      right: 10,
-      bottom: 10,
+      left: isPhone ? 4 : 10,
+      right: isPhone ? 4 : 10,
+      bottom: isPhone ? 4 : 10,
       child: _hoverZone(
         'bottom',
         Container(
@@ -1080,14 +1140,19 @@ class ReaderPageState extends State<ReaderPage> {
                   Text('${(fraction * 100).floor()}%', style: ts(w: FontWeight.w700, tab: true)),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      [
-                        if (isPdf && pages > 0) pageLast > page ? 'Pages $page–$pageLast of $pages' : 'Page $page of $pages',
-                        if (!isPdf && pages > 0) 'Page $page of $pages in this chapter',
-                        left,
-                      ].where((x) => x.isNotEmpty).join(' · '),
-                      style: ts(c: tk.sec, size: 12, tab: true),
-                      overflow: TextOverflow.ellipsis,
+                    // Tap to see all of it (a folded phone shows only a little).
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => setState(() => bottomOpen = !bottomOpen),
+                      child: Text(
+                        [
+                          if (isPdf && pages > 0) pageLast > page ? 'Pages $page–$pageLast of $pages' : 'Page $page of $pages',
+                          if (!isPdf && pages > 0) 'Page $page of $pages in this chapter',
+                          left,
+                        ].where((x) => x.isNotEmpty).join(bottomOpen ? '\n' : ' · '),
+                        style: ts(c: tk.sec, size: 12, tab: true),
+                        overflow: bottomOpen ? null : TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                   if (nextVol != null) Btn.ghost('Next volume', icon: Icons.skip_next_outlined, dense: true, onTap: openNext),
@@ -1107,46 +1172,68 @@ class ReaderPageState extends State<ReaderPage> {
       'contents' => _contents(),
       'bookmarks' => _bookmarks(),
       'search' => _search(),
+      'text' => _textPanel(),
       _ => _styles(),
     };
     final title = switch (panel) {
       'contents' => 'Contents',
       'bookmarks' => 'Bookmarks',
       'search' => 'Search in the book',
-      _ => 'Reading settings',
+      'text' => 'Text & spacing',
+      _ => 'Settings',
     };
+    if (isPhone) {
+      // A phone: just this panel (the bars hide), along the top right, 60% of
+      // the screen each way; it scrolls inside. A tap outside closes it.
+      final sz = MediaQuery.sizeOf(context);
+      return Positioned.fill(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => panel = null),
+              ),
+            ),
+            Positioned(
+              right: 4,
+              top: 0,
+              width: (sz.width * 0.6).clamp(240.0, sz.width - 8),
+              height: (sz.height * 0.6).clamp(260.0, sz.height - 8),
+              child: _panelBox(title, body),
+            ),
+          ],
+        ),
+      );
+    }
     return Positioned(
       right: 10,
       top: chrome ? (_narrow ? 130 : 78) : 10,
       bottom: chrome ? 96 : 10,
-      // A phone: the panel takes the whole width.
       left: _narrow ? 10 : null,
       width: _narrow ? null : 400,
-      child: _hoverZone(
-        'panel',
-        Container(
-          decoration: _barDeco,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: _hoverZone('panel', _panelBox(title, body)),
+    );
+  }
+
+  Widget _panelBox(String title, Widget body) => Container(
+    decoration: _barDeco,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: EdgeInsets.fromLTRB(14, isPhone ? 4 : 10, 6, isPhone ? 2 : 6),
+          child: Row(
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 10, 6, 6),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(title, style: ts(w: FontWeight.w700)),
-                    ),
-                    IconBtn(Icons.close, tooltip: 'Close (Esc)', onTap: () => setState(() => panel = null)),
-                  ],
-                ),
-              ),
-              Expanded(child: body),
+              Expanded(child: Text(title, style: ts(w: FontWeight.w700))),
+              IconBtn(Icons.close, tooltip: 'Close (Esc)', onTap: () => setState(() => panel = null)),
             ],
           ),
         ),
-      ),
-    );
-  }
+        Expanded(child: body),
+      ],
+    ),
+  );
 
   Widget _contents() {
     if (toc.isEmpty) return EmptyState(icon: Icons.toc, text: ready ? 'This book has no contents list.' : 'Loading…');
@@ -1242,6 +1329,41 @@ class ReaderPageState extends State<ReaderPage> {
     );
   }
 
+  void _runSearch(String q) {
+    setState(() {
+      searching = q.trim().isNotEmpty;
+      results = [];
+    });
+    cmd('sable.search(${jsonEncode(q.trim())})');
+  }
+
+  /// The search box takes keys from the book page too: when the book still
+  /// has the keyboard (Windows can keep it there after a click on the page),
+  /// what's typed arrives here.
+  bool _typingSent = false;
+  void _syncTyping() {
+    final want = panel == 'search' && !isPdf;
+    if (want == _typingSent) return;
+    _typingSent = want;
+    cmd('sable.setTyping($want)');
+  }
+
+  void _typeKey(String key, bool ctrl) {
+    final t = searchCtl.text;
+    switch (key) {
+      case 'Escape':
+        setState(() => panel = null);
+      case 'Enter':
+        _runSearch(t);
+      case 'Backspace':
+        if (t.isNotEmpty) searchCtl.text = t.substring(0, t.length - 1);
+      default:
+        if (key.length == 1 && !ctrl) searchCtl.text = t + key;
+    }
+    searchCtl.selection = TextSelection.collapsed(offset: searchCtl.text.length);
+    setState(() {});
+  }
+
   Widget _search() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1253,13 +1375,7 @@ class ReaderPageState extends State<ReaderPage> {
             autofocus: true,
             hint: 'Words to find, then Enter',
             icon: Icons.search,
-            onSubmitted: (q) {
-              setState(() {
-                searching = q.trim().isNotEmpty;
-                results = [];
-              });
-              cmd('sable.search(${jsonEncode(q.trim())})');
-            },
+            onSubmitted: _runSearch,
           ),
         ),
         if (searching)
@@ -1326,33 +1442,59 @@ class ReaderPageState extends State<ReaderPage> {
     );
   }
 
-  Widget _styles() {
-    final s = Settings.I.style;
-    final d = Settings.defaults.style;
-    Widget row(String label, Widget child, {bool changed = false, VoidCallback? reset}) => Padding(
+  /// A setting's row: the name, the control, and a reset button once it's changed.
+  /// In a narrow panel (a phone) the name sits above the control.
+  Widget _row(String label, Widget child, {bool changed = false, VoidCallback? reset}) {
+    final resetBtn = SizedBox(
+      width: lk.hControl,
+      child: changed && reset != null ? IconBtn(Icons.restart_alt, tooltip: 'Back to the default', onTap: reset) : null,
+    );
+    if (_narrowPanel) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: ts(c: tk.sec, size: 12.5)),
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: child)),
+                resetBtn,
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+    return Padding(
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          SizedBox(
-            width: 104,
-            child: Text(label, style: ts(c: tk.sec)),
-          ),
-          Expanded(
-            child: Align(alignment: Alignment.centerLeft, child: child),
-          ),
-          SizedBox(
-            width: lk.hControl,
-            child: changed && reset != null ? IconBtn(Icons.restart_alt, tooltip: 'Back to the default', onTap: reset) : null,
-          ),
+          SizedBox(width: 118, child: Text(label, style: ts(c: tk.sec))),
+          Expanded(child: Align(alignment: Alignment.centerLeft, child: child)),
+          resetBtn,
         ],
       ),
     );
-    Widget sw(bool v, ValueChanged<bool> f) => Switch(value: v, onChanged: f, activeThumbColor: lk.acc);
-    void set(void Function() f) {
-      f();
-      _styleChanged();
-    }
+  }
 
+  bool get _narrowPanel => isPhone || _narrow;
+
+  Widget _sw(bool v, ValueChanged<bool> f) => Switch(value: v, onChanged: f);
+
+  void _set(void Function() f) {
+    f();
+    _styleChanged();
+  }
+
+  /// Reader settings: how pages look and behave (the text itself is in "Text & spacing").
+  Widget _styles() {
+    final s = Settings.I.style;
+    final d = Settings.defaults.style;
+    final set = _set;
+    final row = _row;
+    final sw = _sw;
     return ListView(
       padding: const EdgeInsets.fromLTRB(14, 0, 8, 14),
       children: [
@@ -1382,7 +1524,7 @@ class ReaderPageState extends State<ReaderPage> {
           changed: s.layout != d.layout,
           reset: () => set(() => s.layout = d.layout),
         ),
-        if (isPdf)
+        if (isPdf) ...[
           row(
             'Crop borders',
             sw(Settings.I.pdfCrop, (v) {
@@ -1397,7 +1539,6 @@ class ReaderPageState extends State<ReaderPage> {
               setState(() {});
             },
           ),
-        if (isPdf)
           row(
             'Dark pages',
             sw(Settings.I.pdfDarkPages, (v) {
@@ -1412,50 +1553,8 @@ class ReaderPageState extends State<ReaderPage> {
               setState(() {});
             },
           ),
+        ],
         if (!isPdf) ...[
-          row(
-            'Font',
-            Drop<String>(
-              value: s.font,
-              width: 200,
-              items: [for (final f in readingFonts) (f, fontLabel(f))],
-              onChanged: (v) => set(() => s.font = v),
-            ),
-            changed: s.font != d.font,
-            reset: () => set(() => s.font = d.font),
-          ),
-          row(
-            'Size',
-            Row(
-              children: [
-                IconBtn(Icons.remove, tooltip: 'Smaller (−)', onTap: () => changeSize(-1)),
-                SizedBox(
-                  width: 44,
-                  child: Text(
-                    '${s.size.round()}',
-                    style: ts(w: FontWeight.w600, tab: true),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                IconBtn(Icons.add, tooltip: 'Bigger (+)', onTap: () => changeSize(1)),
-              ],
-            ),
-            changed: s.size != d.size,
-            reset: () => set(() => s.size = d.size),
-          ),
-          row(
-            'Line spacing',
-            Slider(
-              value: s.spacing,
-              min: 1.0,
-              max: 2.4,
-              divisions: 14,
-              onChanged: (v) => setState(() => s.spacing = v),
-              onChangeEnd: (_) => _styleChanged(),
-            ),
-            changed: s.spacing != d.spacing,
-            reset: () => set(() => s.spacing = d.spacing),
-          ),
           row(
             'Text colour',
             _ColourSwatch(
@@ -1471,45 +1570,28 @@ class ReaderPageState extends State<ReaderPage> {
             reset: () => set(() => s.textColor = d.textColor),
           ),
           row(
-            'Side margins',
-            Slider(
-              value: s.marginX,
-              min: 0,
-              max: 320,
-              divisions: 32,
-              label: '${s.marginX.round()} px',
-              onChanged: (v) => setState(() => s.marginX = v),
-              onChangeEnd: (_) => _styleChanged(),
+            'Alignment',
+            Seg<String>(
+              value: s.align,
+              items: const [('left', 'Left'), ('center', 'Middle'), ('right', 'Right'), ('justify', 'Justify')],
+              onChanged: (v) => set(() => s.align = v),
             ),
-            changed: s.marginX != d.marginX,
-            reset: () => set(() => s.marginX = d.marginX),
+            changed: s.align != d.align,
+            reset: () => set(() => s.align = d.align),
           ),
           row(
-            'Top & bottom',
-            Slider(
-              value: s.marginY,
-              min: 0,
-              max: 200,
-              divisions: 20,
-              label: '${s.marginY.round()} px',
-              onChanged: (v) => setState(() => s.marginY = v),
-              onChangeEnd: (_) => _styleChanged(),
+            'Same top line',
+            sw(s.alignTop, (v) => set(() => s.alignTop = v)),
+            changed: s.alignTop != d.alignTop,
+            reset: () => set(() => s.alignTop = d.alignTop),
+          ),
+          if (_narrowPanel)
+            Text('Every page starts on the same line, even at a new chapter or a heading.', style: ts(size: 11.5, c: tk.faint))
+          else
+            Padding(
+              padding: const EdgeInsets.only(left: 118, bottom: 4),
+              child: Text('Every page starts on the same line, even at a new chapter or a heading.', style: ts(size: 11.5, c: tk.faint)),
             ),
-            changed: s.marginY != d.marginY,
-            reset: () => set(() => s.marginY = d.marginY),
-          ),
-          row(
-            'Justify',
-            sw(s.justify, (v) => set(() => s.justify = v)),
-            changed: s.justify != d.justify,
-            reset: () => set(() => s.justify = d.justify),
-          ),
-          row(
-            'Book\'s styles',
-            sw(s.publisherStyles, (v) => set(() => s.publisherStyles = v)),
-            changed: s.publisherStyles != d.publisherStyles,
-            reset: () => set(() => s.publisherStyles = d.publisherStyles),
-          ),
           row(
             'Turning',
             Seg<PageFlow>(
@@ -1520,17 +1602,17 @@ class ReaderPageState extends State<ReaderPage> {
             changed: s.flow != d.flow,
             reset: () => set(() => s.flow = d.flow),
           ),
-          if (s.flow == PageFlow.scrolled)
+          if (s.flow == PageFlow.scrolled && !isPhone)
             row(
               'Scroll distance',
-              Slider(
+              NumStep(
                 value: s.scrollStep,
+                step: 10,
                 min: 40,
                 max: 600,
-                divisions: 28,
-                label: '${s.scrollStep.round()} px a notch',
-                onChanged: (v) => setState(() => s.scrollStep = v),
-                onChangeEnd: (_) => _styleChanged(),
+                title: 'Scroll distance (px a notch)',
+                format: (v) => '${v.round()} px',
+                onChanged: (v) => set(() => s.scrollStep = v),
               ),
               changed: s.scrollStep != d.scrollStep,
               reset: () => set(() => s.scrollStep = d.scrollStep),
@@ -1542,70 +1624,83 @@ class ReaderPageState extends State<ReaderPage> {
             reset: () => set(() => s.animate = d.animate),
           ),
         ],
+        if (isPhone) ...[
+          row(
+            'Clear of the notch',
+            sw(s.clearNotch, (v) => set(() => s.clearNotch = v)),
+            changed: s.clearNotch != d.clearNotch,
+            reset: () => set(() => s.clearNotch = d.clearNotch),
+          ),
+          row(
+            'Clear of the status line',
+            sw(s.clearStatus, (v) => set(() => s.clearStatus = v)),
+            changed: s.clearStatus != d.clearStatus,
+            reset: () => set(() => s.clearStatus = d.clearStatus),
+          ),
+        ],
         row(
           'Controls size',
-          Row(
-            children: [
-              Expanded(
-                child: Slider(
-                  value: Look.I.readerScale.clamp(0.8, 2.0),
-                  min: 0.8,
-                  max: 2.0,
-                  divisions: 24,
-                  label: '${(Look.I.readerScale * 100).round()}%',
-                  onChanged: (v) => setState(() => Look.I.readerScale = v),
-                  onChangeEnd: (_) => Look.I.save(),
-                ),
-              ),
-              PercentField(
-                value: Look.I.readerScale,
-                min: 0.8,
-                max: 2.0,
-                onSet: (v) {
-                  Look.I.readerScale = v;
-                  Look.I.save();
-                  setState(() {});
-                },
-              ),
-            ],
+          NumStep(
+            value: (Look.I.readerScale * 100).roundToDouble(),
+            step: 5,
+            min: 60,
+            max: 200,
+            title: 'Controls size (%)',
+            format: (v) => '${v.round()}%',
+            onChanged: (v) {
+              Look.I.readerScale = v / 100;
+              Look.I.save();
+              setState(() {});
+            },
           ),
-          changed: Look.I.readerScale != Look.defaultReaderScale,
+          changed: (Look.I.readerScale - Look.defaultReaderScale).abs() > 0.001,
           reset: () {
             Look.I.readerScale = Look.defaultReaderScale;
             Look.I.save();
             setState(() {});
           },
         ),
-        row(
-          'Mouse ◀ ▶',
-          Seg<String>(
-            value: Settings.I.mouseInReader,
-            items: const [('pages', 'Turn pages'), ('leave', 'Back leaves')],
-            onChanged: (v) {
-              Settings.I.mouseInReader = v;
+        if (!isPhone)
+          row(
+            'Mouse ◀ ▶',
+            Seg<String>(
+              value: Settings.I.mouseInReader,
+              items: const [('pages', 'Turn pages'), ('leave', 'Back leaves')],
+              onChanged: (v) {
+                Settings.I.mouseInReader = v;
+                Settings.I.save();
+                setState(() {});
+              },
+            ),
+            changed: Settings.I.mouseInReader != 'pages',
+            reset: () {
+              Settings.I.mouseInReader = 'pages';
               Settings.I.save();
               setState(() {});
             },
           ),
-          changed: Settings.I.mouseInReader != 'pages',
-          reset: () {
-            Settings.I.mouseInReader = 'pages';
-            Settings.I.save();
-            setState(() {});
-          },
-        ),
         const SizedBox(height: 8),
         Row(
           children: [
-            Expanded(
-              child: Text('These apply to every book.', style: ts(size: 11.5, c: tk.faint)),
-            ),
+            Expanded(child: Text('These apply to every book.', style: ts(size: 11.5, c: tk.faint))),
             Btn.ghost(
               'Reset all',
               icon: Icons.restart_alt,
               dense: true,
               onTap: () {
+                final keep = ReadingStyle()..apply(s.toJson());
                 s.apply(ReadingStyle().toJson());
+                // The text and spacing settings have their own reset.
+                s
+                  ..font = keep.font
+                  ..size = keep.size
+                  ..spacing = keep.spacing
+                  ..wordSpacing = keep.wordSpacing
+                  ..paraSpacing = keep.paraSpacing
+                  ..indent = keep.indent
+                  ..marginXPct = keep.marginXPct
+                  ..marginYPct = keep.marginYPct
+                  ..publisherStyles = keep.publisherStyles;
                 Settings.I.pdfDarkPages = false;
                 Settings.I.pdfCrop = false;
                 Settings.I.mouseInReader = 'pages';
@@ -1613,6 +1708,151 @@ class ReaderPageState extends State<ReaderPage> {
                 Look.I.save();
                 _styleChanged();
               },
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  /// Text & spacing: the font, sizes, spacing and margins.
+  Widget _textPanel() {
+    final s = Settings.I.style;
+    final d = Settings.defaults.style;
+    final set = _set;
+    final row = _row;
+    if (isPdf) {
+      return EmptyState(icon: Icons.format_size, text: 'A PDF\'s text is fixed by the PDF itself.');
+    }
+    String pct(double v) => '${v == v.roundToDouble() ? v.round() : v.toStringAsFixed(1)}%';
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(14, 0, 8, 14),
+      children: [
+        row(
+          'Font',
+          Drop<String>(
+            value: s.font,
+            width: _narrowPanel ? 180 : 200,
+            items: [for (final f in readingFonts) (f, fontLabel(f))],
+            onChanged: (v) => set(() => s.font = v),
+          ),
+          changed: s.font != d.font,
+          reset: () => set(() => s.font = d.font),
+        ),
+        row(
+          'Text size',
+          NumStep(
+            value: s.size,
+            step: 0.5,
+            min: 10,
+            max: 48,
+            title: 'Text size',
+            onChanged: (v) => set(() => s.size = v),
+          ),
+          changed: s.size != d.size,
+          reset: () => set(() => s.size = d.size),
+        ),
+        row(
+          'Line spacing',
+          NumStep(
+            value: s.spacing,
+            step: 0.05,
+            min: 0.8,
+            max: 3,
+            title: 'Line spacing',
+            format: (v) => v.toStringAsFixed(2),
+            onChanged: (v) => set(() => s.spacing = v),
+          ),
+          changed: s.spacing != d.spacing,
+          reset: () => set(() => s.spacing = d.spacing),
+        ),
+        row(
+          'Word spacing',
+          NumStep(
+            value: s.wordSpacing,
+            step: 0.5,
+            min: -2,
+            max: 20,
+            title: 'Extra space between words (px)',
+            onChanged: (v) => set(() => s.wordSpacing = v),
+          ),
+          changed: s.wordSpacing != d.wordSpacing,
+          reset: () => set(() => s.wordSpacing = d.wordSpacing),
+        ),
+        row(
+          'Paragraph spacing',
+          NumStep(
+            value: s.paraSpacing,
+            step: 0.05,
+            min: 0,
+            max: 3,
+            title: 'Space after each paragraph (lines)',
+            format: (v) => v.toStringAsFixed(2),
+            onChanged: (v) => set(() => s.paraSpacing = v),
+          ),
+          changed: s.paraSpacing != d.paraSpacing,
+          reset: () => set(() => s.paraSpacing = d.paraSpacing),
+        ),
+        row(
+          'Indent paragraphs',
+          _sw(s.indent, (v) => set(() => s.indent = v)),
+          changed: s.indent != d.indent,
+          reset: () => set(() => s.indent = d.indent),
+        ),
+        row(
+          'Side margins',
+          NumStep(
+            value: s.marginXPct,
+            step: 0.5,
+            min: 0,
+            max: 30,
+            title: 'Side margins (% of the width)',
+            format: pct,
+            onChanged: (v) => set(() => s.marginXPct = v),
+          ),
+          changed: s.marginXPct != d.marginXPct,
+          reset: () => set(() => s.marginXPct = d.marginXPct),
+        ),
+        row(
+          'Top & bottom margins',
+          NumStep(
+            value: s.marginYPct,
+            step: 0.5,
+            min: 0,
+            max: 30,
+            title: 'Top and bottom margins (% of the height)',
+            format: pct,
+            onChanged: (v) => set(() => s.marginYPct = v),
+          ),
+          changed: s.marginYPct != d.marginYPct,
+          reset: () => set(() => s.marginYPct = d.marginYPct),
+        ),
+        row(
+          'Book\'s own styles',
+          _sw(s.publisherStyles, (v) => set(() => s.publisherStyles = v)),
+          changed: s.publisherStyles != d.publisherStyles,
+          reset: () => set(() => s.publisherStyles = d.publisherStyles),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(child: Text('Hold − or + to keep going; tap a number to type it.', style: ts(size: 11.5, c: tk.faint))),
+            Btn.ghost(
+              'Reset',
+              icon: Icons.restart_alt,
+              dense: true,
+              onTap: () => set(() {
+                s
+                  ..font = d.font
+                  ..size = d.size
+                  ..spacing = d.spacing
+                  ..wordSpacing = d.wordSpacing
+                  ..paraSpacing = d.paraSpacing
+                  ..indent = d.indent
+                  ..marginXPct = d.marginXPct
+                  ..marginYPct = d.marginYPct
+                  ..publisherStyles = d.publisherStyles;
+              }),
             ),
           ],
         ),
@@ -1736,10 +1976,11 @@ class _Ctl {
 
 /// An icon with its name under it; outlined when the keyboard menu is on it.
 class _LabelBtn extends StatelessWidget {
-  const _LabelBtn(this.c, {required this.focused, required this.onTap});
+  const _LabelBtn(this.c, {required this.focused, required this.onTap, this.compact = false});
   final _Ctl c;
   final bool focused;
   final VoidCallback onTap;
+  final bool compact;
   @override
   Widget build(BuildContext context) {
     return Tooltip(
@@ -1749,8 +1990,8 @@ class _LabelBtn extends StatelessWidget {
         builder: (h) => GestureDetector(
           onTap: onTap,
           child: Container(
-            width: 68,
-            height: 50,
+            width: compact ? 58 : 68,
+            height: compact ? 44 : 50,
             margin: const EdgeInsets.symmetric(horizontal: 1),
             decoration: BoxDecoration(
               color: c.active ? lk.tint(tk.raised, 0.22) : (h || focused ? tk.raised : null),
@@ -1760,11 +2001,11 @@ class _LabelBtn extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(c.icon, size: 20, color: c.color ?? (c.active || focused ? tk.text : tk.sec)),
+                Icon(c.icon, size: compact ? 19 : 20, color: c.color ?? (c.active || focused ? tk.text : tk.sec)),
                 const SizedBox(height: 3),
                 Text(
                   c.label,
-                  style: ts(size: 10.5, c: c.active || focused ? tk.text : tk.faint),
+                  style: ts(size: compact ? 10 : 10.5, c: c.active || focused ? tk.text : tk.faint),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),

@@ -451,8 +451,8 @@ Future<void> _runSelftest() async {
         await _screenshot('reader');
         // Separate margins and a text colour.
         final st = Settings.I.style;
-        st.marginX = 200;
-        st.marginY = 100;
+        st.marginXPct = 15;
+        st.marginYPct = 10;
         st.textColor = '#ffd27a';
         r.cmd('sable.setStyle(${jsonEncode(st.toJson())})');
         await Future<void>.delayed(const Duration(milliseconds: 900));

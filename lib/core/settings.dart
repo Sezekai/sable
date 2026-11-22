@@ -39,59 +39,120 @@ enum PageFlow { paged, scrolled }
 
 /// Reading look. A few options, like Lithium.
 class ReadingStyle {
-  String font = 'Literata'; // book | Literata | Inter | Georgia | Palatino Linotype
-  double size = 18; // px
-  double spacing = 1.5;
-  double marginX = 96; // px at the left and right of the text (and between two pages)
-  double marginY = 44; // px at the top and bottom
+  String font = 'Literata'; // see readingFonts
+  double size = 18; // px, in steps of 0.5
+  double spacing = 1.5; // line spacing
+  double wordSpacing = 0; // extra px between words
+  double paraSpacing = 0.5; // space after each paragraph, in lines (em)
+
+  /// Margins as a share of the window (%): left and right (and between two
+  /// pages), and top and bottom.
+  double marginXPct = 6;
+  double marginYPct = 5;
 
   /// Text colour on the page as #rrggbb, or '' for the theme's own.
   String textColor = '';
-  bool justify = true;
+
+  /// left | center | right | justify
+  String align = 'justify';
+
+  /// Start each paragraph indented.
+  bool indent = false;
+
+  /// Every page starts on the same line (nothing pushes the text down).
+  bool alignTop = false;
+
   bool publisherStyles = false;
   PageLayout layout = PageLayout.auto;
   PageFlow flow = PageFlow.paged;
   bool animate = true;
 
+  /// Phone: keep the text clear of the camera notch, and of the status line.
+  bool clearNotch = true;
+  bool clearStatus = true;
+
   /// Scroll mode: how far one notch of the mouse wheel moves (px).
   double scrollStep = 140;
+
+  bool get justify => align == 'justify';
 
   Map<String, dynamic> toJson() => {
     'font': font,
     'size': size,
     'spacing': spacing,
-    'marginX': marginX,
-    'marginY': marginY,
+    'wordSpacing': wordSpacing,
+    'paraSpacing': paraSpacing,
+    'marginXPct': marginXPct,
+    'marginYPct': marginYPct,
     'textColor': textColor,
-    'justify': justify,
+    'align': align,
+    'indent': indent,
+    'alignTop': alignTop,
     'publisherStyles': publisherStyles,
     'layout': layout.name,
     'flow': flow.name,
     'animate': animate,
+    'clearNotch': clearNotch,
+    'clearStatus': clearStatus,
     'scrollStep': scrollStep,
   };
+
+  static double _half(num v) => (v * 2).round() / 2;
+  static double _d(Object? v) => (v as num?)?.toDouble() ?? double.nan;
 
   void apply(Map m) {
     font = m['font'] as String? ?? font;
     if (!readingFonts.contains(font)) font = 'Literata';
-    size = ((m['size'] as num?)?.toDouble() ?? size).clamp(12, 36);
-    spacing = ((m['spacing'] as num?)?.toDouble() ?? spacing).clamp(1.0, 2.4);
-    // Before 1.2, one 'margin' setting was half the space at the sides.
-    final old = (m['margin'] as num?)?.toDouble();
-    marginX = ((m['marginX'] as num?)?.toDouble() ?? (old == null ? null : old * 2) ?? marginX).clamp(0, 320);
-    marginY = ((m['marginY'] as num?)?.toDouble() ?? marginY).clamp(0, 200);
+    double pick(String k, double cur) {
+      final v = _d(m[k]);
+      return v.isNaN ? cur : v;
+    }
+
+    size = _half(pick('size', size).clamp(10, 48));
+    spacing = (pick('spacing', spacing).clamp(0.8, 3.0) * 20).round() / 20;
+    wordSpacing = _half(pick('wordSpacing', wordSpacing).clamp(-2, 20));
+    paraSpacing = (pick('paraSpacing', paraSpacing).clamp(0, 3) * 20).round() / 20;
+    // Before 1.4 the margins were in px (and before 1.2 one 'margin' was half the sides).
+    final oldX = _d(m['marginX']), oldM = _d(m['margin']), oldY = _d(m['marginY']);
+    if (!m.containsKey('marginXPct') && (!oldX.isNaN || !oldM.isNaN)) {
+      marginXPct = _half(((oldX.isNaN ? oldM * 2 : oldX) / 14).clamp(0, 30));
+    }
+    if (!m.containsKey('marginYPct') && !oldY.isNaN) marginYPct = _half((oldY / 8.5).clamp(0, 30));
+    marginXPct = _half(pick('marginXPct', marginXPct).clamp(0, 30));
+    marginYPct = _half(pick('marginYPct', marginYPct).clamp(0, 30));
     final tc = m['textColor'];
     textColor = tc is String && RegExp(r'^#[0-9a-fA-F]{6}$').hasMatch(tc) ? tc : (tc == '' ? '' : textColor);
-    justify = m['justify'] as bool? ?? justify;
+    final al = m['align'];
+    if (al is String && const ['left', 'center', 'right', 'justify'].contains(al)) {
+      align = al;
+    } else if (m['justify'] is bool) {
+      align = m['justify'] == true ? 'justify' : 'left';
+    }
+    indent = m['indent'] as bool? ?? indent;
+    alignTop = m['alignTop'] as bool? ?? alignTop;
     publisherStyles = m['publisherStyles'] as bool? ?? publisherStyles;
     layout = PageLayout.values.firstWhere((e) => e.name == m['layout'], orElse: () => layout);
     flow = PageFlow.values.firstWhere((e) => e.name == m['flow'], orElse: () => flow);
     animate = m['animate'] as bool? ?? animate;
+    clearNotch = m['clearNotch'] as bool? ?? clearNotch;
+    clearStatus = m['clearStatus'] as bool? ?? clearStatus;
     scrollStep = ((m['scrollStep'] as num?)?.toDouble() ?? scrollStep).clamp(40, 600);
   }
 }
 
-const readingFonts = ['book', 'Literata', 'Inter', 'Georgia', 'Palatino Linotype'];
+const readingFonts = [
+  'book',
+  'Literata',
+  'PT Serif',
+  'Domine',
+  'Arbutus Slab',
+  'Georgia',
+  'Palatino Linotype',
+  'Inter',
+  'Segoe UI',
+  'Open Sans',
+  'Lato',
+];
 
 String fontLabel(String f) => f == 'book' ? "The book's own" : f;
 

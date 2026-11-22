@@ -313,6 +313,119 @@ class Field extends StatelessWidget {
   }
 }
 
+/// A number with − and + either side (no slider). Holding a button repeats it;
+/// tapping the number lets you type an exact value.
+class NumStep extends StatefulWidget {
+  const NumStep({
+    super.key,
+    required this.value,
+    required this.step,
+    required this.min,
+    required this.max,
+    required this.onChanged,
+    this.format,
+    this.title = 'Value',
+  });
+  final double value, step, min, max;
+  final ValueChanged<double> onChanged;
+  final String Function(double v)? format;
+  final String title;
+  @override
+  State<NumStep> createState() => _NumStepState();
+}
+
+class _NumStepState extends State<NumStep> {
+  Timer? _repeat;
+  late double _v = widget.value;
+
+  @override
+  void didUpdateWidget(NumStep old) {
+    super.didUpdateWidget(old);
+    if (_repeat == null) _v = widget.value;
+  }
+
+  String _fmt(double v) {
+    if (widget.format != null) return widget.format!(v);
+    return v == v.roundToDouble() ? '${v.round()}' : v.toStringAsFixed(v * 2 == (v * 2).roundToDouble() ? 1 : 2);
+  }
+
+  double _snap(double v) {
+    final n = (v / widget.step).round() * widget.step;
+    return double.parse(n.clamp(widget.min, widget.max).toStringAsFixed(4));
+  }
+
+  void _bump(int dir) {
+    final n = _snap(_v + dir * widget.step);
+    if (n == _v) return;
+    setState(() => _v = n);
+    widget.onChanged(n);
+  }
+
+  void _hold(int dir) {
+    _repeat?.cancel();
+    var ticks = 0;
+    _repeat = Timer.periodic(const Duration(milliseconds: 90), (_) {
+      if (++ticks > 3) _bump(dir);
+    });
+  }
+
+  void _release() {
+    _repeat?.cancel();
+    _repeat = null;
+  }
+
+  @override
+  void dispose() {
+    _repeat?.cancel();
+    super.dispose();
+  }
+
+  Widget _btn(IconData icon, int dir) => Listener(
+    onPointerDown: (_) => _hold(dir),
+    onPointerUp: (_) => _release(),
+    onPointerCancel: (_) => _release(),
+    child: IconBtn(icon, size: 17, onTap: () => _bump(dir)),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: lk.hControl,
+      decoration: BoxDecoration(
+        color: tk.field,
+        border: Border.all(color: tk.line),
+        borderRadius: BorderRadius.circular(lk.rControl),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _btn(Icons.remove, -1),
+          GestureDetector(
+            onTap: () async {
+              final t = await ask(context, widget.title, initial: _fmt(_v).replaceAll(RegExp(r'[^0-9.\-]'), ''), confirmLabel: 'Set');
+              final n = double.tryParse((t ?? '').replaceAll(RegExp(r'[^0-9.\-]'), ''));
+              if (n == null) return;
+              final v = _snap(n);
+              setState(() => _v = v);
+              widget.onChanged(v);
+            },
+            child: MouseRegion(
+              cursor: SystemMouseCursors.text,
+              child: Container(
+                constraints: const BoxConstraints(minWidth: 46),
+                alignment: Alignment.center,
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(_fmt(_v), style: ts(w: FontWeight.w600, tab: true)),
+              ),
+            ),
+          ),
+          _btn(Icons.add, 1),
+        ],
+      ),
+    );
+  }
+}
+
 /// A box for typing an exact percentage (like 103), with a % after it.
 /// Enter or leaving the box applies it; the value is kept within [min]–[max].
 class PercentField extends StatefulWidget {

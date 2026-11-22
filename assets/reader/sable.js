@@ -21,15 +21,210 @@ const fontStack = f => ({
     Inter: "'Inter', 'Segoe UI', system-ui, sans-serif",
     Georgia: "Georgia, 'Times New Roman', serif",
     'Palatino Linotype': "'Palatino Linotype', Palatino, 'Book Antiqua', serif",
+    // Segoe UI is Windows' own font (other systems use their nearest sans).
+    'Segoe UI': "'Segoe UI', 'Open Sans', system-ui, sans-serif",
+    'Open Sans': "'Open Sans', 'Segoe UI', sans-serif",
+    'PT Serif': "'PT Serif', Georgia, serif",
+    Domine: "'Domine', Georgia, serif",
+    Lato: "'Lato', 'Segoe UI', sans-serif",
+    'Arbutus Slab': "'Arbutus Slab', Georgia, serif",
 }[f] ?? null)
 
-const fontFaces = () => `
-@font-face { font-family: 'Literata'; font-style: normal; font-weight: 200 900; src: url('${location.origin}${base}/fonts/Literata.woff2') format('woff2'); }
-@font-face { font-family: 'Literata'; font-style: italic; font-weight: 200 900; src: url('${location.origin}${base}/fonts/Literata-Italic.woff2') format('woff2'); }
+// Bundled fonts (all under the SIL Open Font License): [family, file, style, weight].
+const bundled = [
+ [
+  "Literata",
+  "Literata.woff2",
+  "normal",
+  "200 900",
+  ""
+ ],
+ [
+  "Literata",
+  "Literata-Italic.woff2",
+  "italic",
+  "200 900",
+  ""
+ ],
+ [
+  "Open Sans",
+  "open-sans-latin-ext-wght-normal.woff2",
+  "normal",
+  "300 800",
+  "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+ ],
+ [
+  "Open Sans",
+  "open-sans-latin-wght-normal.woff2",
+  "normal",
+  "300 800",
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+ ],
+ [
+  "PT Serif",
+  "pt-serif-latin-ext-400-normal.woff2",
+  "normal",
+  "400",
+  "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+ ],
+ [
+  "PT Serif",
+  "pt-serif-latin-400-normal.woff2",
+  "normal",
+  "400",
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+ ],
+ [
+  "PT Serif",
+  "pt-serif-latin-ext-700-italic.woff2",
+  "italic",
+  "700",
+  "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+ ],
+ [
+  "PT Serif",
+  "pt-serif-latin-700-italic.woff2",
+  "italic",
+  "700",
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+ ],
+ [
+  "PT Serif",
+  "pt-serif-latin-ext-400-italic.woff2",
+  "italic",
+  "400",
+  "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+ ],
+ [
+  "PT Serif",
+  "pt-serif-latin-400-italic.woff2",
+  "italic",
+  "400",
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+ ],
+ [
+  "PT Serif",
+  "pt-serif-latin-ext-700-normal.woff2",
+  "normal",
+  "700",
+  "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+ ],
+ [
+  "PT Serif",
+  "pt-serif-latin-700-normal.woff2",
+  "normal",
+  "700",
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+ ],
+ [
+  "Domine",
+  "domine-latin-ext-wght-normal.woff2",
+  "normal",
+  "400 700",
+  "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+ ],
+ [
+  "Domine",
+  "domine-latin-wght-normal.woff2",
+  "normal",
+  "400 700",
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+ ],
+ [
+  "Lato",
+  "lato-latin-ext-400-normal.woff2",
+  "normal",
+  "400",
+  "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+ ],
+ [
+  "Lato",
+  "lato-latin-400-normal.woff2",
+  "normal",
+  "400",
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+ ],
+ [
+  "Lato",
+  "lato-latin-ext-700-italic.woff2",
+  "italic",
+  "700",
+  "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+ ],
+ [
+  "Lato",
+  "lato-latin-700-italic.woff2",
+  "italic",
+  "700",
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+ ],
+ [
+  "Lato",
+  "lato-latin-ext-400-italic.woff2",
+  "italic",
+  "400",
+  "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+ ],
+ [
+  "Lato",
+  "lato-latin-400-italic.woff2",
+  "italic",
+  "400",
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+ ],
+ [
+  "Lato",
+  "lato-latin-ext-700-normal.woff2",
+  "normal",
+  "700",
+  "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+ ],
+ [
+  "Lato",
+  "lato-latin-700-normal.woff2",
+  "normal",
+  "700",
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+ ],
+ [
+  "Arbutus Slab",
+  "arbutus-slab-latin-ext-400-normal.woff2",
+  "normal",
+  "400",
+  "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+ ],
+ [
+  "Arbutus Slab",
+  "arbutus-slab-latin-400-normal.woff2",
+  "normal",
+  "400",
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+ ],
+ [
+  "Open Sans",
+  "open-sans-latin-ext-wght-italic.woff2",
+  "italic",
+  "300 800",
+  "U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF"
+ ],
+ [
+  "Open Sans",
+  "open-sans-latin-wght-italic.woff2",
+  "italic",
+  "300 800",
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD"
+ ]
+]
+const fontFaces = () => bundled.map(([fam, file, st, wt, range]) =>
+    `@font-face { font-family: '${fam}'; font-style: ${st}; font-weight: ${wt}; font-display: block; src: url('${location.origin}${base}/fonts/${file}') format('woff2');${range ? ` unicode-range: ${range};` : ''} }`).join('\n') + `
 @font-face { font-family: 'Inter'; font-weight: 400; src: url('${location.origin}${base}/fonts/Inter-Regular.ttf') format('truetype'); }
 @font-face { font-family: 'Inter'; font-weight: 600; src: url('${location.origin}${base}/fonts/Inter-SemiBold.ttf') format('truetype'); }
 @font-face { font-family: 'Inter'; font-weight: 700; src: url('${location.origin}${base}/fonts/Inter-Bold.ttf') format('truetype'); }
 `
+
+// The text controls, with their defaults (for settings saved by older versions).
+const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d)
+const alignOf = () => ({ left: 'left', center: 'center', right: 'right', justify: 'justify' }[style.align] ?? (style.justify === false ? 'left' : 'justify'))
 
 const bookCSS = () => {
     const fam = fontStack(style.font)
@@ -40,19 +235,27 @@ const bookCSS = () => {
 ${fontFaces()}
 html { color-scheme: dark; color: ${fg} !important; background: transparent !important; }
 html, body { font-size: ${style.size}px !important; }
+${num(style.wordSpacing, 0) ? `body * { word-spacing: ${num(style.wordSpacing, 0)}px !important; }` : ''}
 body * { color: inherit !important; background-color: transparent !important; border-color: ${theme.muted} !important; }
 a:link, a:visited { color: ${theme.link} !important; }
 ${fam && !own ? `body, body p, body div, body span, body li, body blockquote, body dd, body h1, body h2, body h3, body h4, body h5, body h6, body td { font-family: ${fam} !important; }` : ''}
 ${own ? '' : `
 p, li, blockquote, dd, div {
     line-height: ${style.spacing} !important;
-    text-align: ${style.justify ? 'justify' : 'start'} !important;
+    text-align: ${alignOf()} !important;
     -webkit-hyphens: auto; hyphens: auto;
     widows: 2; orphans: 2;
 }
-p { margin-top: 0 !important; margin-bottom: ${(style.spacing - 1) * 0.9 + 0.35}em !important; }
+p { margin-top: 0 !important; margin-bottom: ${num(style.paraSpacing, 0.5)}em !important; }
+${style.indent ? 'p { text-indent: 1.5em !important; } p.sable-first, h1 + p, h2 + p, h3 + p, h4 + p, hr + p { text-indent: 0 !important; }' : ''}
 [align="center"], .center, .centered { text-align: center !important; }
 h1, h2, h3, h4 { line-height: 1.3 !important; text-align: center; }`}
+${style.alignTop ? `
+/* Every page starts on the same line: nothing pushes the first line down. */
+body, body * { margin-top: 0 !important; padding-top: 0 !important; }
+html, body { margin-top: 0 !important; padding-top: 0 !important; }
+h1, h2, h3, h4, h5, h6 { margin-bottom: 0.6em !important; }
+.sable-empty { display: none !important; }` : ''}
 img, svg, image { cursor: zoom-in; }
 img.sable-fit {
     display: block !important;
@@ -90,18 +293,28 @@ const applyLayout = () => {
     const w = window.innerWidth
     r.setAttribute('flow', style.flow === 'scrolled' ? 'scrolled' : 'paginated')
     r.setAttribute('max-column-count', String(cols))
-    r.setAttribute('max-inline-size', cols === 2 ? `${Math.max(320, Math.floor(w / 2))}px` : `${Math.max(420, Math.min(780, w))}px`)
-    // Left and right margins set the gap at the sides (and between two pages);
-    // top and bottom margins set the space above and below the text.
-    // (The book view puts a gap of this share of the window at each side and
-    // between pages.) Each page keeps at least ~260px of text, however big the
-    // margins are set.
-    const mx = style.marginX ?? (style.margin ? style.margin * 2 : 96)
-    const my = style.marginY ?? 44
-    const most = Math.max(1, ((w - 260 * cols) / (w * (cols + 1))) * 100)
-    const gap = Math.max(0.5, Math.min(40, most, mx / w * 100))
-    r.setAttribute('gap', `${gap.toFixed(1)}%`)
-    r.setAttribute('margin', `${Math.round(my)}px`)
+    r.setAttribute('max-inline-size', cols === 2 ? `${Math.max(320, Math.floor(w / 2))}px` : `${Math.max(420, Math.min(1100, w))}px`)
+    // Margins are a share of the window: left and right (also the gap between
+    // two pages), and top and bottom. Each page keeps at least ~260px of text.
+    const h = window.innerHeight
+    const mx = num(style.marginXPct, style.marginX ? style.marginX / 14 : 6)
+    const my = num(style.marginYPct, style.marginY ? style.marginY / 8.5 : 5)
+    const most = Math.max(0.5, ((w - 260 * cols) / (w * (cols + 1))) * 100)
+    const gap = Math.max(0, Math.min(40, most, mx))
+    r.setAttribute('gap', `${gap.toFixed(2)}%`)
+    const myPx = Math.round(h * Math.min(30, Math.max(0, my)) / 100)
+    // Space the app keeps clear (a phone's camera notch, the status line).
+    const top = Math.max(0, num(style.insetTop, 0)), bottom = Math.max(0, num(style.insetBottom, 0))
+    const scrolled = style.flow === 'scrolled'
+    // Scrolling has no pages, so the top and bottom margins move the view itself in.
+    view.style.position = 'absolute'
+    view.style.left = '0'
+    view.style.right = '0'
+    view.style.width = 'auto'
+    view.style.height = 'auto'
+    view.style.top = `${top + (scrolled ? myPx : 0)}px`
+    view.style.bottom = `${bottom + (scrolled ? myPx : 0)}px`
+    r.setAttribute('margin', `${scrolled ? 0 : myPx}px`)
     if (style.animate) r.setAttribute('animated', '')
     else r.removeAttribute('animated')
 }
@@ -153,6 +366,13 @@ const onKey = e => {
     }
     const tag = e.target?.tagName
     if (tag === 'INPUT' || tag === 'TEXTAREA') return
+    // A box in the app (like search) is being typed in, but the keyboard is
+    // still with the book: every key goes to the app.
+    if (typing) {
+        e.preventDefault()
+        post('key', { key: e.key, ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey, typing: true })
+        return
+    }
     // The app's control menu is driven by the keyboard: keys go to the app only.
     if (menuOpen) {
         if (pageKeys.has(e.key) || e.key === 'Enter') e.preventDefault()
@@ -391,7 +611,51 @@ const onRelocate = ({ detail }) => {
     })
 }
 
+// Books that size their text in px or pt (or with words like "medium") would
+// ignore the text size setting: those sizes are turned into rem, which
+// follows the page's text size.
+const keywordRem = { 'xx-small': 0.5625, 'x-small': 0.625, small: 0.8125, medium: 1, large: 1.125, 'x-large': 1.5, 'xx-large': 2, 'xxx-large': 3 }
+const toRem = v => {
+    if (!v) return null
+    const m = /^(-?[\d.]+)(px|pt)$/.exec(v.trim())
+    if (m) return `${(parseFloat(m[1]) * (m[2] === 'pt' ? 4 / 3 : 1) / 16).toFixed(4)}rem`
+    const k = keywordRem[v.trim()]
+    return k ? `${k}rem` : null
+}
+const fixRules = rules => {
+    for (const rule of rules ?? []) {
+        if (rule.cssRules) fixRules(rule.cssRules)
+        const st = rule.style
+        if (!st) continue
+        const rem = toRem(st.getPropertyValue('font-size'))
+        if (rem) st.setProperty('font-size', rem, st.getPropertyPriority('font-size'))
+        const lh = st.getPropertyValue('line-height')
+        if (/(px|pt)$/.test(lh.trim())) st.removeProperty('line-height')
+        // A fixed size on the whole page would win over the setting.
+        if (rule.selectorText && /^(html|body|:root)$/i.test(rule.selectorText.trim())) st.removeProperty('font-size')
+    }
+}
+const normalise = doc => {
+    try {
+        for (const sheet of doc.styleSheets) {
+            if (sheet.ownerNode?.id === 'sable-style') continue
+            try { fixRules(sheet.cssRules) } catch {}
+        }
+        for (const el of doc.querySelectorAll('[style]')) {
+            const rem = toRem(el.style.fontSize)
+            if (rem) el.style.fontSize = rem
+        }
+        for (const el of doc.querySelectorAll('font[size]')) el.removeAttribute('size')
+        // Empty paragraphs and spacer boxes (used to push text down the page).
+        for (const el of doc.body?.querySelectorAll('p, div, span, section') ?? []) {
+            if (el.children.length && [...el.children].some(c => c.tagName !== 'BR')) continue
+            if ((el.textContent ?? '').replace(/[\s\u00a0\u200b]/g, '') === '') el.classList.add('sable-empty')
+        }
+    } catch (e) { post('error', { message: 'normalise: ' + e }) }
+}
+
 const onLoad = ({ detail: { doc } }) => {
+    normalise(doc)
     doc.addEventListener('click', onDocClick)
     doc.addEventListener('keydown', onKey)
     doc.addEventListener('wheel', onWheel, { passive: false })
@@ -414,6 +678,7 @@ const flattenToc = (items, level = 0, out = []) => {
 
 // Moving the mouse tells the app (it shows the controls); the app hides the
 // pointer again when the mouse stops.
+let typing = false
 let menuOpen = false, lastMove = 0, cursorHidden = false, lastX = -1, lastY = -1
 const onMove = e => {
     // Only real movement (pages being laid out under a still mouse also send mousemove).
@@ -457,6 +722,7 @@ window.sable = {
     setTheme: t => { theme = { ...theme, ...t }; applyTheme(); applyStyle() },
     closeLightbox,
     setMenu: open => { menuOpen = !!open },
+    setTyping: on => { typing = !!on },
     setCursor,
     async search(q) {
         const run = ++searchRun

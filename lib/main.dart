@@ -11,6 +11,7 @@ import 'package:window_manager/window_manager.dart';
 
 import 'core/db.dart';
 import 'core/downloads.dart';
+import 'core/file_assoc.dart';
 import 'core/jobs.dart';
 import 'core/library.dart';
 import 'core/log.dart';
@@ -24,6 +25,7 @@ import 'ui/app.dart';
 import 'ui/look.dart';
 import 'ui/pdf_view.dart';
 import 'ui/reader_page.dart';
+import 'ui/widgets.dart';
 
 const appVersion = String.fromEnvironment('SABLE_VERSION', defaultValue: 'dev');
 const _instancePort = 47641;
@@ -31,6 +33,8 @@ final GlobalKey _shotKey = GlobalKey();
 
 Future<void> main(List<String> args) async {
   final selftest = args.contains('--selftest') || Platform.environment['SABLE_SELFTEST'] == '1';
+  // A book file to open (Sable started by double-clicking an ebook).
+  final openPath = args.where((a) => !a.startsWith('--') && File(a).existsSync()).firstOrNull;
   WidgetsFlutterBinding.ensureInitialized();
 
   // One window only: a second launch brings the first one forward.
@@ -41,7 +45,8 @@ Future<void> main(List<String> args) async {
     } catch (_) {
       try {
         final s = await Socket.connect(InternetAddress.loopbackIPv4, _instancePort, timeout: const Duration(seconds: 2));
-        s.write('show');
+        // Sable is already open: it opens the file instead.
+        s.add(utf8.encode(openPath == null ? 'show' : 'open:$openPath'));
         await s.flush();
         await s.close();
       } catch (_) {}
@@ -139,10 +144,13 @@ Future<void> main(List<String> args) async {
   }
 
   instance?.listen((s) {
-    s.listen((_) async {
+    final buf = <int>[];
+    s.listen(buf.addAll, onDone: () async {
       await windowManager.show();
       await windowManager.restore();
       await windowManager.focus();
+      final msg = utf8.decode(buf, allowMalformed: true);
+      if (msg.startsWith('open:')) unawaited(_openFile(msg.substring(5)));
     });
   });
 
@@ -166,6 +174,9 @@ Future<void> main(List<String> args) async {
       unawaited(_phoneSync());
       phoneLifecycle = AppLifecycleListener(onResume: () => unawaited(_phoneSync()));
     } else {
+      // The ebook file Sable was started with (double-clicked in Explorer).
+      if (openPath != null) unawaited(_openFile(openPath));
+      unawaited(FileAssoc.refresh());
       if (safeMode) Settings.I.watchFolders = false;
       // A quick rescan picks up anything added while Sable was closed;
       // unchanged books are skipped, so this is fast.
@@ -185,6 +196,26 @@ Future<void> main(List<String> args) async {
 }
 
 AppLifecycleListener? phoneLifecycle;
+
+/// Opens a book file given to Sable (from Explorer). Books in the library open
+/// as usual; others are remembered without joining the library.
+Future<void> _openFile(String path) async {
+  try {
+    final b = await Library.I.openOutside(path);
+    final ctx = navKey.currentContext;
+    if (b == null || ctx == null || !ctx.mounted) {
+      if (b == null) toast('That file couldn\'t be opened as a book.', ToastKind.error);
+      return;
+    }
+    // A book already open closes first.
+    navKey.currentState?.popUntil((r) => r.isFirst);
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    final c2 = navKey.currentContext;
+    if (c2 != null && c2.mounted) await openBook(c2, b);
+  } catch (e, st) {
+    AppLog.I.error('Opening $path', e, st);
+  }
+}
 
 /// A quiet sync (an unreachable PC isn't an error: the phone is just away from home).
 Future<void> _phoneSync() async {

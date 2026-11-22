@@ -835,16 +835,22 @@ class Library extends ChangeNotifier {
       } else {
         // Folder settings may have changed (kind, collection) without the file changing.
         final lf = e.value.$3;
-        if (b.missing || b.root != lf.path || b.collection != lf.collection) {
+        if (b.missing || b.root != lf.path || b.collection != lf.collection || b.outside) {
           _applyFolder(b, lf);
           b.missing = false;
           Db.I.updateFile(b);
+          if (b.outside) {
+            // A file opened with Sable that's in a library folder now.
+            b.outside = false;
+            Db.I.updateExtras(b);
+          }
         }
       }
     }
     // Missing files: only under folders that can be reached.
     final goneByFp = <String, Book>{};
     for (final b in _books) {
+      if (b.outside) continue; // opened from elsewhere: not part of the folders
       if (listed.containsKey(b.path)) continue;
       if (unavailableRoots.any((r) => p.isWithin(r, outerPath(b.path)))) continue;
       if (!b.missing) {
@@ -887,6 +893,10 @@ class Library extends ChangeNotifier {
         if (ex != null) {
           _apply(ex, info, lf);
           Db.I.updateFile(ex);
+          if (ex.outside) {
+            ex.outside = false;
+            Db.I.updateExtras(ex);
+          }
           updated++;
         } else if (goneByFp[info.fingerprint] != null) {
           final b = goneByFp.remove(info.fingerprint)!;
@@ -894,6 +904,19 @@ class Library extends ChangeNotifier {
           _apply(b, info, lf);
           Db.I.updateFile(b);
           moved++;
+        } else if (_outsideByFp(info.fingerprint) != null) {
+          // Opened with Sable before it was in the library: it keeps its history.
+          final b = _outsideByFp(info.fingerprint)!;
+          known.remove(b.path);
+          _apply(b, info, lf);
+          b
+            ..outside = false
+            ..root = lf.path
+            ..kind = lf.kind
+            ..collection = lf.collection;
+          Db.I.updateFile(b);
+          Db.I.updateExtras(b);
+          added++;
         } else {
           final b = _newBook(info, lf);
           try {
@@ -1048,6 +1071,52 @@ class Library extends ChangeNotifier {
       addedAt: nowSec(),
     );
     _apply(b, info, lf);
+    return b;
+  }
+
+  Book? _outsideByFp(String fp) {
+    for (final b in _books) {
+      if (b.outside && b.fingerprint == fp) return b;
+    }
+    return null;
+  }
+
+  /// A file opened with Sable (double-clicked in Explorer). A book from the
+  /// library opens as usual; any other file is remembered (its place, history
+  /// and so on) without being added to the library — and if it's added later,
+  /// what was read is already there.
+  Future<Book?> openOutside(String path) async {
+    final file = File(path);
+    if (!file.existsSync()) return null;
+    final low = p.normalize(path).toLowerCase();
+    for (final b in _books) {
+      if (!b.missing && p.normalize(b.path).toLowerCase() == low) return b;
+    }
+    final infos = await inspectInIsolate([path], zipPasswords);
+    if (infos.isEmpty || infos.first.fingerprint.isEmpty) return null;
+    final info = infos.first;
+    if (info.format == 'pdf' && info.error == null) await _inspectPdf(info);
+    // The same book is in the library (maybe a copy somewhere else).
+    for (final b in _books) {
+      if (!b.outside && !b.missing && b.fingerprint == info.fingerprint) return b;
+    }
+    final lf = LibFolder(p.dirname(path));
+    final known = _outsideByFp(info.fingerprint);
+    if (info.cover != null) await _saveCover(info.fingerprint, info.cover!);
+    if (known != null) {
+      _apply(known, info, lf);
+      known.root = '';
+      Db.I.updateFile(known);
+      return known;
+    }
+    final b = _newBook(info, lf)
+      ..root = ''
+      ..outside = true;
+    Db.I.insertBook(b);
+    Db.I.updateExtras(b);
+    _books.add(b);
+    _byId[b.id] = b;
+    changed();
     return b;
   }
 

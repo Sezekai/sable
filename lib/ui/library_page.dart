@@ -9,9 +9,11 @@ import '../core/db.dart';
 import '../core/jobs.dart';
 import '../core/library.dart';
 import '../core/downloads.dart';
+import '../core/extras.dart';
 import '../core/platform.dart';
 import '../core/settings.dart';
 import 'app.dart';
+import 'extras_ui.dart';
 import 'filters_panel.dart';
 import 'phone.dart';
 import 'reader_page.dart';
@@ -726,12 +728,25 @@ class LibraryPageState extends State<LibraryPage> {
           Btn('Favourite', icon: Icons.favorite_border, dense: true, onTap: () => Library.I.toggleFavourite(vs)),
           const SizedBox(width: 6),
           TagMenu(volumes: vs),
-          if (isPhone) ...[
+          const SizedBox(width: 6),
+          Btn('Find descriptions', icon: Icons.travel_explore, dense: true, tooltip: 'Look up descriptions online for the ones without', onTap: () {
+            Lookup.run(volumes: vs);
+            toast('Looking up descriptions');
+          }),
+          if (vs.length >= 2) ...[
             const SizedBox(width: 6),
-            Btn('Download', icon: Icons.download_outlined, dense: true, onTap: () {
-              Downloads.I.add(vs.map((v) => v.primary));
-              toast('Downloading ${vs.length} book${vs.length == 1 ? '' : 's'}');
-              setState(ticked.clear);
+            Btn('Combine', icon: Icons.merge, dense: true, tooltip: 'These are the same book (formats or versions): show them as one', onTap: () async {
+              if (await confirm(context, 'Combine ${vs.length} as one book?',
+                  'They\'ll show as one book, with progress shared between the copies. You can pick the default copy on the book\'s page, or separate them again.',
+                  confirmLabel: 'Combine')) {
+                Library.I.combine(vs);
+                setState(ticked.clear);
+              }
+            }),
+            const SizedBox(width: 6),
+            Btn('Make series', icon: Icons.library_books_outlined, dense: true, onTap: () async {
+              final ok = await seriesDialog(context, name: vs.first.primary.displaySeries ?? '', volumes: vs, isNew: true);
+              if (ok) setState(ticked.clear);
             }),
           ],
           const Spacer(),

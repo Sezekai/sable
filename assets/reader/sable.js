@@ -782,7 +782,8 @@ const main = async () => {
         title: typeof book.metadata?.title === 'string' ? book.metadata.title : '',
         fixed: !!view.isFixedLayout,
     })
-    await view.init({ lastLocation: init.position || null, showTextStart: !init.position })
+    await view.init({ lastLocation: init.position || null, showTextStart: !init.position && !(init.fraction > 0) })
+    if (!init.position && init.fraction > 0) await view.goToFraction(init.fraction)
 }
 
 main().catch(e => {

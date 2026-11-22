@@ -80,6 +80,8 @@ class ReadTracker {
     }
     book.timeSpent += activeSeconds;
     Db.I.updateReading(book);
+    // Other copies of the same book (its PDF, another version) carry on from here too.
+    Library.I.shareProgress(book);
     if (activeSeconds >= 10 || completed) {
       Db.I.addSession(
         bookId: book.id,

@@ -194,6 +194,8 @@ class ReaderPageState extends State<ReaderPage> {
     'style': Settings.I.style.toJson(),
     'theme': Look.I.readerTheme(),
     'position': _startPosition,
+    // No place saved in this file but read in another copy (a PDF and an EPUB of one book): start from there.
+    'fraction': _startPosition.isEmpty && !(book.isRead && book.progress >= 0.999) ? book.progress : 0,
     'fileName': p.basename(path ?? book.fileName),
   };
 
@@ -853,6 +855,9 @@ class ReaderPageState extends State<ReaderPage> {
         crop: Settings.I.pdfCrop,
         onReady: (n, outline) => setState(() {
           ready = true;
+          if (book.position.isEmpty && book.progress > 0 && book.progress < 0.999) {
+            WidgetsBinding.instance.addPostFrameCallback((_) => pdf.goToFraction(book.progress));
+          }
           toc = [for (final o in outline) TocItem(o.label, '${o.page}', o.level)];
           AppLog.I.info('Opened ${p.basename(path!)} · $n pages');
         }),

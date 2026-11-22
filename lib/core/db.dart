@@ -51,6 +51,23 @@ class Book {
   String? userSeries;
   double? userVolume;
   String? userKind;
+
+  /// A description typed in by hand, and one found online (the book's own wins over neither).
+  String? userDescription;
+  String? foundDescription;
+
+  /// A cover picked by hand: its key in the covers folder (like custom-1a2b…).
+  String? userCover;
+
+  /// Files with the same group are one book (combined by hand); 'solo-…' keeps a file on its own.
+  String? userGroup;
+
+  /// The copy that opens first when the book has several (formats or versions).
+  bool preferred;
+
+  /// Opened from outside the library (a file opened with Sable): it's in the
+  /// history but not the library, until it turns up in a library folder.
+  bool outside;
   int addedAt;
   bool missing;
   // Reading
@@ -101,6 +118,12 @@ class Book {
     this.userSeries,
     this.userVolume,
     this.userKind,
+    this.userDescription,
+    this.foundDescription,
+    this.userCover,
+    this.userGroup,
+    this.preferred = false,
+    this.outside = false,
     required this.addedAt,
     this.missing = false,
     this.rating = 0,
@@ -141,8 +164,16 @@ class Book {
 
   String get seriesKey => normKey(displaySeries ?? '');
 
+  /// The description to show: typed in by hand, else the book's own, else found online.
+  String? get shownDescription {
+    String? ok(String? x) => x == null || x.trim().isEmpty ? null : x;
+    return ok(userDescription) ?? ok(description) ?? ok(foundDescription);
+  }
+
   /// Same volume in another format (or in a ZIP) shares this key.
   String get volumeKey {
+    if (userGroup != null && !userGroup!.startsWith('solo-')) return 'g|$userGroup';
+    if (userGroup != null) return 's|$userGroup';
     if (displaySeries != null && displayVolume != null) {
       return 'v|$seriesKey|${normKey(edition)}|${displayVolume!}';
     }
@@ -197,6 +228,12 @@ class Book {
         userSeries: r['user_series'] as String?,
         userVolume: (r['user_volume'] as num?)?.toDouble(),
         userKind: r['user_kind'] as String?,
+        userDescription: r['user_description'] as String?,
+        foundDescription: r['found_description'] as String?,
+        userCover: r['user_cover'] as String?,
+        userGroup: r['user_group'] as String?,
+        preferred: (r['preferred'] as int? ?? 0) == 1,
+        outside: (r['outside'] as int? ?? 0) == 1,
         addedAt: r['added_at'] as int,
         missing: (r['missing'] as int? ?? 0) == 1,
         rating: (r['rating'] as num?)?.toDouble() ?? 0,
@@ -210,6 +247,16 @@ class Book {
         timeSpent: r['time_spent'] as int? ?? 0,
         manualRead: (r['manual_read'] as int? ?? 0) == 1,
       );
+}
+
+/// Details for a series kept apart from its books (a description, a cover).
+class SeriesInfo {
+  SeriesInfo(this.key, {this.description, this.foundDescription, this.cover});
+  final String key;
+  String? description;
+  String? foundDescription;
+  String? cover;
+  String? get shownDescription => description ?? foundDescription;
 }
 
 class ReadingSession {
@@ -335,6 +382,56 @@ CREATE TABLE IF NOT EXISTS changes(
 PRAGMA user_version = 1;
 ''');
     }
+    if (v < 2) {
+      // 1.4: descriptions and covers by hand or found online, books combined by
+      // hand, the copy to open first, books opened from outside the library,
+      // and series details.
+      for (final c in [
+        'user_description TEXT',
+        'found_description TEXT',
+        'user_cover TEXT',
+        'user_group TEXT',
+        'preferred INTEGER DEFAULT 0',
+        'outside INTEGER DEFAULT 0',
+      ]) {
+        try {
+          raw.execute('ALTER TABLE books ADD COLUMN $c');
+        } catch (_) {}
+      }
+      raw.execute('''
+CREATE TABLE IF NOT EXISTS series_info(
+  key TEXT PRIMARY KEY, name TEXT, description TEXT, found_description TEXT, cover TEXT, updated_at INTEGER DEFAULT 0);
+PRAGMA user_version = 2;
+''');
+    }
+  }
+
+  // ---------- series details ----------
+
+  Map<String, SeriesInfo> seriesInfo() => {
+        for (final r in raw.select('SELECT * FROM series_info'))
+          r['key'] as String: SeriesInfo(
+            r['key'] as String,
+            description: r['description'] as String?,
+            foundDescription: r['found_description'] as String?,
+            cover: r['cover'] as String?,
+          ),
+      };
+
+  void saveSeriesInfo(SeriesInfo i) => raw.execute(
+        '''INSERT INTO series_info(key, description, found_description, cover, updated_at) VALUES(?,?,?,?,?)
+        ON CONFLICT(key) DO UPDATE SET description=excluded.description, found_description=excluded.found_description,
+        cover=excluded.cover, updated_at=excluded.updated_at''',
+        [i.key, i.description, i.foundDescription, i.cover, nowSec()],
+      );
+
+  /// Description, cover, group and preferred copy (set by hand or found online).
+  void updateExtras(Book b) {
+    raw.execute(
+      '''UPDATE books SET user_description=?, found_description=?, user_cover=?, user_group=?, preferred=?, outside=?,
+      updated_at=? WHERE id=?''',
+      [b.userDescription, b.foundDescription, b.userCover, b.userGroup, b.preferred ? 1 : 0, b.outside ? 1 : 0, nowSec(), b.id],
+    );
   }
 
   // ---------- books ----------

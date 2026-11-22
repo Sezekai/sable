@@ -312,7 +312,13 @@ class SyncClient extends ChangeNotifier {
     final want = <String>{};
     for (final b in Library.I.books) {
       if (b.missing) continue;
-      if (!File(Covers.I.fileForFp(b.fingerprint)).existsSync()) want.add(b.fingerprint);
+      final k = Covers.I.keyFor(b);
+      if (!File(Covers.I.fileForFp(k)).existsSync()) want.add(k);
+    }
+    // Series covers picked by hand.
+    for (final i in Db.I.seriesInfo().values) {
+      final k = i.cover;
+      if (k != null && !File(Covers.I.fileForFp(k)).existsSync()) want.add(k);
     }
     if (want.isEmpty) return 0;
     Directory(AppPaths.I.thumbs).createSync(recursive: true);

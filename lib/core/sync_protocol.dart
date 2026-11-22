@@ -14,7 +14,7 @@ import 'db.dart';
 ///   both sides' records are kept (never doubled).
 /// - Reading time, times read and first/last finished are worked out from the
 ///   records, so they add up the same on both.
-const syncTables = ['books', 'tags', 'sessions', 'completions', 'book_tags', 'bookmarks'];
+const syncTables = ['books', 'tags', 'sessions', 'completions', 'book_tags', 'bookmarks', 'series_info'];
 
 /// Increase when the sync messages change in a way an older app can't follow.
 const syncVersion = 1;

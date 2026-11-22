@@ -995,14 +995,22 @@ class LibraryPageState extends State<LibraryPage> {
 
 /// A book's cover, or a made-up one from its title when there's no picture.
 class BookCover extends StatelessWidget {
-  const BookCover({super.key, required this.book, required this.width, this.fit = BoxFit.cover});
+  const BookCover({super.key, required this.book, required this.width, this.fit = BoxFit.cover, this.coverKey});
   final Book book;
   final double width;
   final BoxFit fit;
 
+  /// A cover picked by hand for a series (wins over the book's).
+  final String? coverKey;
+
   @override
   Widget build(BuildContext context) {
-    final f = Covers.I.cached(book);
+    File? f;
+    if (coverKey != null) {
+      final c = File(Covers.I.fileForFp(coverKey!));
+      if (c.existsSync()) f = c;
+    }
+    f ??= Covers.I.cached(book);
     if (f == null) return _made();
     final dpr = MediaQuery.devicePixelRatioOf(context);
     return Image.file(

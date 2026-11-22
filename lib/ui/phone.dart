@@ -498,7 +498,7 @@ class DownloadBtn extends StatelessWidget {
         final d = Downloads.I;
         final it = d.itemFor(book);
         if (d.isDone(book)) {
-          return Btn.ghost('On this phone · Remove', icon: Icons.download_done, onTap: () async {
+          return Btn('On this phone · Remove', icon: Icons.download_done, onTap: () async {
             if (await confirm(context, 'Remove from this phone?',
                 'The download is removed from the phone to free space. The book stays on the PC and in your library.',
                 confirmLabel: 'Remove')) {
@@ -507,7 +507,7 @@ class DownloadBtn extends StatelessWidget {
           });
         }
         if (it != null) {
-          return Btn.ghost(
+          return Btn(
             it.state == DlState.running ? 'Downloading ${(it.fraction * 100).floor()}% · Cancel' : 'Queued · Cancel',
             icon: Icons.close,
             onTap: () => d.cancel(book.uid),
@@ -555,13 +555,13 @@ class SeriesDownloads extends StatelessWidget {
           if (rest.isNotEmpty) Btn('Download all ${rest.length} (${humanSize(size(rest))})', icon: Icons.download_outlined, onTap: () => go(rest)),
           if (unread.isNotEmpty && unread.length != rest.length)
             Btn('Download unread ${unread.length} (${humanSize(size(unread))})', icon: Icons.download_outlined, onTap: () => go(unread)),
-          if (queued > 0) Btn.ghost('$queued downloading · Cancel', icon: Icons.close, onTap: () {
+          if (queued > 0) Btn('$queued downloading · Cancel', icon: Icons.close, onTap: () {
             for (final b in books) {
               d.cancel(b.uid);
             }
           }),
           if (onPhone > 0)
-            Btn.ghost('$onPhone on this phone · Remove', icon: Icons.download_done, onTap: () async {
+            Btn('$onPhone on this phone · Remove', icon: Icons.download_done, onTap: () async {
               if (await confirm(context, 'Remove this series\' downloads?',
                   'The $onPhone downloaded book${onPhone == 1 ? '' : 's'} are removed from the phone. They stay on the PC and in your library.',
                   confirmLabel: 'Remove')) {

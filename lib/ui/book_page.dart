@@ -10,9 +10,11 @@ import '../core/jobs.dart';
 import '../core/library.dart';
 import '../core/parse.dart';
 import '../core/downloads.dart';
+import '../core/extras.dart';
 import '../core/platform.dart';
 import '../core/settings.dart';
 import 'app.dart';
+import 'extras_ui.dart';
 import 'library_page.dart';
 import 'phone.dart';
 import 'reader_page.dart';
@@ -61,6 +63,72 @@ Widget _crumbs(List<(String, VoidCallback?)> items) => Row(children: [
       ],
     ]);
 
+// ---------------- shared layout ----------------
+
+/// The cover's width on a book or series page: big on a PC, about a third of
+/// the screen on a phone (like Tachiyomi's).
+double _coverW(double w) => isPhone ? (w * 0.36).clamp(110.0, 190.0) : (w >= 1300 ? 300.0 : 240.0);
+
+/// Covers are 2:3 (1.5 times as tall as wide) everywhere.
+const coverAspect = 2 / 3;
+
+Widget _coverBox(Book b, double w, {double? progress, String? coverKey, VoidCallback? onChange}) => ClipRRect(
+  borderRadius: BorderRadius.circular(lk.rPanel),
+  child: SizedBox(
+    width: w,
+    height: w * 1.5,
+    child: Stack(
+      children: [
+        Positioned.fill(child: BookCover(book: b, width: w, coverKey: coverKey)),
+        if (progress != null) Positioned(left: 0, right: 0, bottom: 0, child: ProgressLine(value: progress)),
+        if (onChange != null && !isPhone)
+          Positioned(
+            right: 6,
+            top: 6,
+            child: Container(
+              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(lk.rControl)),
+              child: IconBtn(Icons.image_outlined, size: 16, color: Colors.white, tooltip: 'Change the cover', onTap: onChange),
+            ),
+          ),
+      ],
+    ),
+  ),
+);
+
+/// The top of a book or series page: back, then where you are.
+Widget _topNav(List<(String, VoidCallback?)> items) => Padding(
+  padding: isPhone ? const EdgeInsets.fromLTRB(4, 2, 12, 0) : const EdgeInsets.fromLTRB(12, 10, 16, 4),
+  child: _crumbs(items),
+);
+
+EdgeInsets get _pagePad => isPhone ? const EdgeInsets.fromLTRB(12, 6, 12, 20) : const EdgeInsets.fromLTRB(24, 12, 24, 24);
+
+Widget _description(BuildContext context, String? text, {required VoidCallback onEdit, VoidCallback? onFind}) {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Text('Description', style: ts(w: FontWeight.w700)),
+          const Spacer(),
+          if (onFind != null) Btn.ghost('Find online', icon: Icons.travel_explore, dense: true, onTap: onFind),
+          Btn.ghost(text == null ? 'Add' : 'Edit', icon: Icons.edit_note, dense: true, onTap: onEdit),
+        ],
+      ),
+      const SizedBox(height: 4),
+      if (text == null)
+        Text('No description yet.', style: ts(c: tk.faint))
+      else
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 820),
+          child: SelectableText(text, style: ts(c: tk.sec, size: 13.5).copyWith(height: 1.55)),
+        ),
+    ],
+  );
+}
+
+String _readLabel(Volume v) => v.isRead ? 'Read again' : (v.inProgress ? 'Continue · ${(v.progress * 100).floor()}%' : 'Read');
+
 // ---------------- one book ----------------
 
 class BookPage extends StatelessWidget {
@@ -70,7 +138,7 @@ class BookPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([Library.I, Covers.I]),
+      listenable: Listenable.merge([Library.I, Covers.I, Downloads.I, Jobs.I]),
       builder: (context, _) {
         final v = Library.I.volumes[volumeKey];
         if (v == null) {
@@ -78,158 +146,272 @@ class BookPage extends StatelessWidget {
         }
         final b = v.primary;
         final series = Library.I.seriesOf(b);
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 16, 4),
-            child: _crumbs([
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _topNav([
               ('Library', Nav.I.closeDetail),
-              if (series != null)
-                (b.displaySeries ?? '', () => Nav.I.openSeriesKey(b.seriesKey)),
+              if (series != null) (b.displaySeries ?? '', () => Nav.I.openSeriesKey(b.seriesKey)),
               (series != null && b.volumeText.isNotEmpty ? b.volumeText : b.displayTitle, null),
             ]),
-          ),
-          Expanded(
-            child: SingleChildScrollView(
-              padding: isPhone ? const EdgeInsets.fromLTRB(14, 8, 14, 24) : const EdgeInsets.fromLTRB(24, 12, 24, 24),
-              child: isPhone && MediaQuery.sizeOf(context).width < 620
-                  // A phone: the cover and buttons above the details.
-                  ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                      Center(child: _left(context, v)),
-                      const SizedBox(height: 18),
-                      _right(context, v),
-                    ])
-                  : Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                      _left(context, v),
-                      const SizedBox(width: 28),
-                      Expanded(child: _right(context, v)),
-                    ]),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, box) => SingleChildScrollView(
+                  padding: _pagePad,
+                  child: isPhone ? _phone(context, v, box.maxWidth) : _pc(context, v, box.maxWidth),
+                ),
+              ),
             ),
-          ),
-        ]);
+          ],
+        );
       },
     );
   }
 
-  Widget _left(BuildContext context, Volume v) {
+  Future<void> _changeCover(BuildContext context, Volume v) async {
+    final k = await coverDialog(context, 'Cover for ${v.primary.displayTitle}');
+    if (k == null) return;
+    Library.I.setCover(v, k.isEmpty ? null : k);
+  }
+
+  Future<void> _editDescription(BuildContext context, Volume v) async {
+    final t = await descriptionDialog(context, 'Description', v.primary.shownDescription);
+    if (t != null) Library.I.setDescription(v, t);
+  }
+
+  Widget _pc(BuildContext context, Volume v, double w) {
     final b = v.primary;
-    final label = v.isRead ? 'Read again' : (v.inProgress ? 'Continue · ${(v.progress * 100).floor()}%' : 'Read');
-    return SizedBox(
-      width: isPhone ? 200 : 230,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(lk.rPanel),
-          child: AspectRatio(
-            aspectRatio: 2 / 3,
-            child: Stack(children: [
-              Positioned.fill(child: BookCover(book: b, width: 230)),
-              Positioned(left: 0, right: 0, bottom: 0, child: ProgressLine(value: v.progress)),
-            ]),
+    final cw = _coverW(w);
+    final twoCols = w - cw - 28 >= 900;
+    final colA = _main(context, v);
+    final colB = _side(context, v);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: cw,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _coverBox(b, cw, progress: v.progress, onChange: () => _changeCover(context, v)),
+              const SizedBox(height: 12),
+              Btn.primary(_readLabel(v), icon: Icons.auto_stories, big: true, onTap: () => openBook(context, b)),
+              for (final f in v.formats.where((x) => x.format != b.format))
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Btn('Read the ${f.format.toUpperCase()}', icon: Icons.description_outlined, onTap: () => openBook(context, f)),
+                ),
+              const SizedBox(height: 6),
+              Btn.ghost('Show in folder', icon: Icons.folder_open_outlined, onTap: () => showInFolder(b)),
+            ],
           ),
         ),
-        const SizedBox(height: 12),
-        Btn.primary(label, icon: Icons.auto_stories, onTap: () => openBook(context, b)),
-        if (v.formats.length > 1) ...[
-          const SizedBox(height: 8),
-          for (final f in v.formats.where((x) => x.format != b.format))
-            Padding(
-              padding: const EdgeInsets.only(bottom: 6),
-              child: Btn('Open as ${f.format.toUpperCase()}', icon: Icons.description_outlined, onTap: () => openBook(context, f)),
-            ),
-        ],
-        const SizedBox(height: 4),
-        if (isPhone)
-          DownloadBtn(b)
-        else
-          Btn.ghost('Show in folder', icon: Icons.folder_open_outlined, onTap: () => showInFolder(b)),
-      ]),
+        const SizedBox(width: 28),
+        Expanded(
+          child: twoCols
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 11, child: colA),
+                    const SizedBox(width: 24),
+                    Expanded(flex: 9, child: colB),
+                  ],
+                )
+              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [colA, const SizedBox(height: 20), colB]),
+        ),
+      ],
     );
   }
 
-  Widget _right(BuildContext context, Volume v) {
+  Widget _phone(BuildContext context, Volume v, double w) {
     final b = v.primary;
-    final tags = Library.I.tagsOfVolume(v).map(Library.I.tagById).whereType<Tag>().toList();
-    final series = Library.I.seriesOf(b);
-    final len = lengthText(b);
-    final sessions = [for (final f in v.files) ...Db.I.sessions(bookId: f.id)]..sort((a, c) => c.startedAt.compareTo(a.startedAt));
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      if (b.inSeries && b.displaySeries != null)
-        Text('${b.displaySeries}${b.volumeText.isEmpty ? '' : ' · ${b.volumeText}'}${b.edition.isEmpty ? '' : ' · ${b.edition}'}',
-            style: ts(c: lk.acc, w: FontWeight.w600)),
-      const SizedBox(height: 4),
-      SelectableText(b.displayTitle, style: ts(size: 24, w: FontWeight.w700)),
-      if (b.displayAuthor != null) ...[
-        const SizedBox(height: 4),
-        Text(b.displayAuthor!, style: ts(size: 14, c: tk.sec)),
-      ],
-      const SizedBox(height: 10),
-      Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        _chip(b.displayKind.label),
-        for (final f in v.formats) _chip(f.format.toUpperCase() + (isInZip(f.path) ? ' in ZIP' : '')),
-        if (len.isNotEmpty) Text(len, style: ts(c: tk.faint)),
-        if (b.collection) _chip('Collection'),
-      ]),
-      const SizedBox(height: 16),
-      Wrap(spacing: 0, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        Stars(value: v.rating, size: 24, onChanged: (r) => Library.I.setRating(v, r)),
-        const SizedBox(width: 14),
-        IconBtn(v.favourite ? Icons.favorite : Icons.favorite_border,
-            tooltip: v.favourite ? 'Favourite' : 'Add to favourites', color: v.favourite ? const Color(0xFFFF6FB1) : null, onTap: () => Library.I.toggleFavourite([v])),
-        const SizedBox(width: 8),
-        TagMenu(volumes: [v]),
-        const SizedBox(width: 8),
-        Btn(v.isRead ? 'Mark unread' : 'Mark read', icon: v.isRead ? Icons.remove_done : Icons.done_all, dense: true,
-            onTap: () => Library.I.markRead([v], !v.isRead)),
-        if (series != null && Library.I.previousVolumes(v).any((x) => !x.isRead)) ...[
-          const SizedBox(width: 8),
-          Btn('Mark previous as read', dense: true, onTap: () {
-            final prev = Library.I.previousVolumes(v);
-            Library.I.markRead(prev, true);
-            toast('Marked ${prev.length} earlier volumes read');
-          }),
-        ],
-        const SizedBox(width: 8),
-        Btn.ghost('Edit details', icon: Icons.edit_outlined, dense: true, onTap: () => editDetails(context, b)),
-      ]),
-      if (tags.isNotEmpty) ...[
-        const SizedBox(height: 10),
-        Wrap(spacing: 6, runSpacing: 6, children: [
-          for (final t in tags) TagChip(t.name, Color(t.color), onRemove: () => Library.I.removeTag(t, [v])),
-        ]),
-      ],
-      if ((b.description ?? '').isNotEmpty) ...[
+    final cw = _coverW(w);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _coverBox(b, cw, progress: v.progress),
+            const SizedBox(width: 14),
+            Expanded(child: _head(context, v, compact: true)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        Btn.primary(_readLabel(v), icon: Icons.auto_stories, big: true, onTap: () => openBook(context, b)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            DownloadBtn(b),
+            for (final f in v.formats.where((x) => x.format != b.format))
+              Btn('Read the ${f.format.toUpperCase()}', icon: Icons.description_outlined, onTap: () => openBook(context, f)),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _actions(context, v),
+        const SizedBox(height: 16),
+        _description(context, b.shownDescription, onEdit: () => _editDescription(context, v)),
         const SizedBox(height: 18),
-        ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: SelectableText(b.description!, style: ts(c: tk.sec, size: 13.5).copyWith(height: 1.55)),
+        _side(context, v),
+      ],
+    );
+  }
+
+  /// Series, title, author, kind and length, rating and favourite.
+  Widget _head(BuildContext context, Volume v, {bool compact = false}) {
+    final b = v.primary;
+    final len = lengthText(b);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (b.inSeries && b.displaySeries != null)
+          Text(
+            '${b.displaySeries}${b.volumeText.isEmpty ? '' : ' · ${b.volumeText}'}${b.edition.isEmpty ? '' : ' · ${b.edition}'}',
+            style: ts(c: lk.acc, w: FontWeight.w600, size: compact ? 12.5 : null),
+          ),
+        const SizedBox(height: 4),
+        SelectableText(b.displayTitle, style: ts(size: compact ? 18 : 24, w: FontWeight.w700)),
+        if (b.displayAuthor != null) ...[
+          const SizedBox(height: 4),
+          Text(b.displayAuthor!, style: ts(size: compact ? 13 : 14, c: tk.sec)),
+        ],
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _chip(b.displayKind.label),
+            for (final f in v.formats) _chip(f.format.toUpperCase() + (isInZip(f.path) ? ' in ZIP' : '')),
+            if (b.collection) _chip('Collection'),
+            if (len.isNotEmpty) Text(len, style: ts(c: tk.faint, size: compact ? 12 : null)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            Stars(value: v.rating, size: compact ? 20 : 24, onChanged: (r) => Library.I.setRating(v, r)),
+            const SizedBox(width: 8),
+            IconBtn(
+              v.favourite ? Icons.favorite : Icons.favorite_border,
+              tooltip: v.favourite ? 'Favourite' : 'Add to favourites',
+              color: v.favourite ? const Color(0xFFFF6FB1) : null,
+              onTap: () => Library.I.toggleFavourite([v]),
+            ),
+            TagMenu(volumes: [v]),
+          ],
         ),
       ],
-      const SizedBox(height: 20),
-      _details(v),
-      const SizedBox(height: 20),
-      Text('Reading history', style: ts(w: FontWeight.w700)),
-      const SizedBox(height: 8),
-      if (sessions.isEmpty)
-        Text('Not read in Sable yet.', style: ts(c: tk.faint))
-      else
-        for (final s in sessions.take(40))
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3),
-            child: Row(children: [
-              SizedBox(width: 120, child: Text(dateText(s.startedAt), style: ts(c: tk.sec))),
-              SizedBox(width: 60, child: Text(timeText(s.startedAt), style: ts(c: tk.faint, tab: true))),
-              SizedBox(width: 90, child: Text(formatDuration(Duration(seconds: s.activeSeconds)), style: ts(tab: true))),
-              Text('${(s.fromPct * 100).floor()}% → ${(s.toPct * 100).floor()}%', style: ts(c: tk.sec, tab: true)),
-              if (s.completed) ...[const SizedBox(width: 10), Icon(Icons.check_circle, size: 14, color: tk.ok), const SizedBox(width: 4), Text('Finished', style: ts(c: tk.ok, size: 12))],
-            ]),
-          ),
-    ]);
+    );
+  }
+
+  Widget _actions(BuildContext context, Volume v) {
+    final series = Library.I.seriesOf(v.primary);
+    final tags = Library.I.tagsOfVolume(v).map(Library.I.tagById).whereType<Tag>().toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            Btn(v.isRead ? 'Mark unread' : 'Mark read', icon: v.isRead ? Icons.remove_done : Icons.done_all, dense: true, onTap: () => Library.I.markRead([v], !v.isRead)),
+            if (series != null && Library.I.previousVolumes(v).any((x) => !x.isRead))
+              Btn('Mark previous as read', dense: true, onTap: () {
+                final prev = Library.I.previousVolumes(v);
+                Library.I.markRead(prev, true);
+                toast('Marked ${prev.length} earlier volumes read');
+              }),
+            Btn('Edit details', icon: Icons.edit_outlined, dense: true, onTap: () => editDetails(context, v.primary)),
+            if (!isPhone) Btn('Change cover', icon: Icons.image_outlined, dense: true, onTap: () => _changeCover(context, v)),
+          ],
+        ),
+        if (tags.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(spacing: 6, runSpacing: 6, children: [for (final t in tags) TagChip(t.name, Color(t.color), onRemove: () => Library.I.removeTag(t, [v]))]),
+        ],
+      ],
+    );
+  }
+
+  Widget _main(BuildContext context, Volume v) {
+    final b = v.primary;
+    final busy = Jobs.I.isQueued(Lookup.jobName);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _head(context, v),
+        const SizedBox(height: 14),
+        _actions(context, v),
+        const SizedBox(height: 18),
+        _description(
+          context,
+          b.shownDescription,
+          onEdit: () => _editDescription(context, v),
+          onFind: b.shownDescription != null || busy ? null : () => Lookup.run(volumes: [v]),
+        ),
+        if (v.hasCopies) ...[
+          const SizedBox(height: 18),
+          CopiesBox(volume: v, onRead: (f) => openBook(context, f)),
+        ],
+      ],
+    );
+  }
+
+  /// The book's details and its reading history.
+  Widget _side(BuildContext context, Volume v) {
+    final sessions = [for (final f in v.files) ...Db.I.sessions(bookId: f.id)]..sort((a, c) => c.startedAt.compareTo(a.startedAt));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (isPhone && v.hasCopies) ...[
+          CopiesBox(volume: v, onRead: (f) => openBook(context, f)),
+          const SizedBox(height: 16),
+        ],
+        _details(v),
+        const SizedBox(height: 18),
+        Text('Reading history', style: ts(w: FontWeight.w700)),
+        const SizedBox(height: 6),
+        if (sessions.isEmpty)
+          Text('Not read in Sable yet.', style: ts(c: tk.faint))
+        else
+          for (final s in sessions.take(40))
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 5),
+              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: tk.line.withValues(alpha: 0.5)))),
+              child: Wrap(
+                spacing: 10,
+                runSpacing: 2,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text('${dateText(s.startedAt)} ${timeText(s.startedAt)}', style: ts(c: tk.sec, tab: true)),
+                  Text(formatDuration(Duration(seconds: s.activeSeconds)), style: ts(tab: true)),
+                  Text('${(s.fromPct * 100).floor()}% → ${(s.toPct * 100).floor()}%', style: ts(c: tk.sec, tab: true)),
+                  if (s.device != 'PC') Text(s.device, style: ts(c: tk.faint, size: 12)),
+                  if (s.completed)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.check_circle, size: 14, color: tk.ok),
+                        const SizedBox(width: 4),
+                        Text('Finished', style: ts(c: tk.ok, size: 12)),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+      ],
+    );
   }
 
   Widget _chip(String s) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-        decoration: BoxDecoration(color: tk.raised, borderRadius: BorderRadius.circular(10), border: Border.all(color: tk.line)),
-        child: Text(s, style: ts(size: 11.5, c: tk.sec, w: FontWeight.w600)),
-      );
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+    decoration: BoxDecoration(color: tk.raised, borderRadius: BorderRadius.circular(10), border: Border.all(color: tk.line)),
+    child: Text(s, style: ts(size: 11.5, c: tk.sec, w: FontWeight.w600)),
+  );
 
   Widget _details(Volume v) {
     final b = v.primary;
@@ -246,16 +428,31 @@ class BookPage extends StatelessWidget {
     ];
     return PanelBox(
       padding: const EdgeInsets.all(12),
-      child: Column(children: [
-        for (final r in rows)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(width: 120, child: Text(r.$1, style: ts(c: tk.faint))),
-              Expanded(child: SelectableText(r.$2, style: ts(c: tk.sec, mono: r.$1 == 'File', size: r.$1 == 'File' ? 12 : null))),
-            ]),
-          ),
-      ]),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final r in rows)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: isPhone
+                  // A phone: the name above its value, so long values fit.
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(r.$1, style: ts(c: tk.faint, size: 12)),
+                        SelectableText(r.$2, style: ts(c: tk.sec, mono: r.$1 == 'File', size: r.$1 == 'File' ? 11.5 : 13)),
+                      ],
+                    )
+                  : Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(width: 120, child: Text(r.$1, style: ts(c: tk.faint))),
+                        Expanded(child: SelectableText(r.$2, style: ts(c: tk.sec, mono: r.$1 == 'File', size: r.$1 == 'File' ? 12 : null))),
+                      ],
+                    ),
+            ),
+        ],
+      ),
     );
   }
 }
@@ -337,10 +534,15 @@ class _SeriesPageState extends State<SeriesPage> {
   String? edition;
   final Set<String> ticked = {};
 
+  /// Picking books (the Select button) instead of opening them.
+  bool selecting = false;
+
+  void _toggle(Volume v) => setState(() => ticked.contains(v.key) ? ticked.remove(v.key) : ticked.add(v.key));
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([Library.I, Covers.I, Downloads.I]),
+      listenable: Listenable.merge([Library.I, Covers.I, Downloads.I, Jobs.I]),
       builder: (context, _) {
         final all = Library.I.series[widget.seriesKey];
         if (all == null || all.isEmpty) {
@@ -352,150 +554,247 @@ class _SeriesPageState extends State<SeriesPage> {
         final vols = all.where((v) => v.any.edition == edition).toList();
         final first = vols.first.any;
         final entry = SeriesEntry(widget.seriesKey, first.displaySeries ?? '', vols);
-        final next = entry.next;
-        final readN = vols.where((v) => v.isRead).length;
-        final authors = vols.map((v) => v.any.displayAuthor).whereType<String>().toSet();
-        final time = vols.fold<int>(0, (a, v) => a + v.any.minutes);
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 16, 4),
-            child: _crumbs([('Library', Nav.I.closeDetail), (entry.label, null)]),
-          ),
-          if (isPhone) _phoneHead(context, first, authors, vols, readN, time, next, editions),
-          if (!isPhone)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 10, 24, 12),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(lk.rPanel),
-                child: SizedBox(width: 130, height: 195, child: BookCover(book: first, width: 130)),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _topNav([('Library', Nav.I.closeDetail), (entry.label, null)]),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, box) => SingleChildScrollView(
+                  padding: _pagePad,
+                  child: isPhone ? _phone(context, entry, editions, box.maxWidth) : _pc(context, entry, editions, box.maxWidth),
+                ),
               ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  SelectableText(entry.label, style: ts(size: 22, w: FontWeight.w700)),
-                  if (authors.isNotEmpty) Text(authors.take(2).join(', '), style: ts(c: tk.sec, size: 14)),
-                  const SizedBox(height: 8),
-                  Text('${vols.length} volumes · $readN read${time > 0 ? ' · about ${(time / 60).round()} h of reading' : ''}',
-                      style: ts(c: tk.faint)),
-                  const SizedBox(height: 8),
-                  SizedBox(width: 320, child: Progress(value: vols.isEmpty ? 0 : readN / vols.length, height: 5)),
-                  const SizedBox(height: 14),
-                  Row(children: [
-                    Btn.primary(
-                        next.inProgress
-                            ? 'Continue ${next.any.volumeText} · ${(next.progress * 100).floor()}%'
-                            : (readN == vols.length ? 'Read again from ${vols.first.any.volumeText}' : 'Read ${next.any.volumeText}'),
-                        icon: Icons.auto_stories,
-                        onTap: () => openBook(context, next.primary)),
-                    const SizedBox(width: 8),
-                    IconBtn(vols.every((v) => v.favourite) ? Icons.favorite : Icons.favorite_border,
-                        tooltip: 'Favourite every volume', onTap: () => Library.I.toggleFavourite(vols)),
-                    TagMenu(volumes: vols),
-                    const SizedBox(width: 8),
-                    if (editions.length > 1)
-                      Seg<String>(
-                        value: edition!,
-                        items: [for (final e in editions) (e, e.isEmpty ? 'Light novel' : e)],
-                        onChanged: (e) => setState(() {
-                          edition = e;
-                          ticked.clear();
-                        }),
-                      ),
-                  ]),
-                ]),
-              ),
-            ]),
-          ),
-          if (ticked.isNotEmpty)
-            Padding(
-              padding: isPhone ? const EdgeInsets.fromLTRB(12, 0, 12, 8) : const EdgeInsets.fromLTRB(24, 0, 24, 8),
-              child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
-                Text('${ticked.length} ticked', style: ts(w: FontWeight.w600)),
-                if (isPhone) ...[
-                  const SizedBox(width: 10),
-                  Btn('Download', dense: true, icon: Icons.download_outlined, onTap: () {
-                    Downloads.I.add(vols.where((v) => ticked.contains(v.key)).map((v) => v.primary));
-                    setState(ticked.clear);
-                  }),
-                ],
-                const SizedBox(width: 10),
-                Btn('Mark read', dense: true, icon: Icons.done_all, onTap: () => Library.I.markRead(vols.where((v) => ticked.contains(v.key)), true)),
-                const SizedBox(width: 6),
-                Btn('Mark unread', dense: true, icon: Icons.remove_done, onTap: () => Library.I.markRead(vols.where((v) => ticked.contains(v.key)), false)),
-                const SizedBox(width: 6),
-                TagMenu(volumes: vols.where((v) => ticked.contains(v.key)).toList()),
-                const SizedBox(width: 12),
-                Btn.ghost('Clear', dense: true, onTap: () => setState(ticked.clear)),
-              ])),
             ),
-          Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-              itemCount: vols.length,
-              itemBuilder: (_, i) => _row(context, vols[i], vols),
-            ),
-          ),
-        ]);
+            if (ticked.isNotEmpty) _selectionBar(vols),
+          ],
+        );
       },
     );
   }
 
-  /// The phone's series header: cover and title side by side, buttons below.
-  Widget _phoneHead(BuildContext context, Book first, Set<String> authors, List<Volume> vols, int readN, int time,
-      Volume next, List<String> editions) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(lk.rPanel),
-            child: SizedBox(width: 90, height: 135, child: BookCover(book: first, width: 90)),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(Library.I.seriesOf(first) == null ? first.cardTitle : (first.displaySeries ?? first.cardTitle),
-                  style: ts(size: 18, w: FontWeight.w700)),
-              if (authors.isNotEmpty) Text(authors.take(2).join(', '), style: ts(c: tk.sec)),
-              const SizedBox(height: 6),
-              Text('${vols.length} volumes · $readN read${time > 0 ? ' · about ${(time / 60).round()} h' : ''}',
-                  style: ts(c: tk.faint, size: 12.5)),
-              const SizedBox(height: 6),
-              Progress(value: vols.isEmpty ? 0 : readN / vols.length, height: 4),
-              const SizedBox(height: 6),
-              Row(children: [
-                IconBtn(vols.every((v) => v.favourite) ? Icons.favorite : Icons.favorite_border,
-                    size: 20, tooltip: 'Favourite every volume', onTap: () => Library.I.toggleFavourite(vols)),
-                TagMenu(volumes: vols),
-              ]),
-            ]),
-          ),
-        ]),
-        const SizedBox(height: 10),
-        Btn.primary(
-            next.inProgress
-                ? 'Continue ${next.any.volumeText} · ${(next.progress * 100).floor()}%'
-                : (readN == vols.length ? 'Read again from ${vols.first.any.volumeText}' : 'Read ${next.any.volumeText}'),
-            icon: Icons.auto_stories,
-            onTap: () => openBook(context, next.primary)),
+  SeriesInfo get _info => Library.I.infoFor(widget.seriesKey);
+
+  Future<void> _changeCover() async {
+    final k = await coverDialog(context, 'Cover for the series', canReset: _info.cover != null);
+    if (k == null) return;
+    final i = _info..cover = k.isEmpty ? null : k;
+    Library.I.saveInfo(i);
+    Covers.I.version++;
+    Covers.I.changedNow();
+  }
+
+  Future<void> _editDescription() async {
+    final t = await descriptionDialog(context, 'Series description', _info.shownDescription);
+    if (t == null) return;
+    final i = _info..description = t.trim().isEmpty ? null : t.trim();
+    Library.I.saveInfo(i);
+  }
+
+  Widget _readBtn(SeriesEntry e) {
+    final vols = e.volumes;
+    final next = e.next;
+    final readN = e.readCount;
+    return Btn.primary(
+      next.inProgress
+          ? 'Continue ${next.any.volumeText} · ${(next.progress * 100).floor()}%'
+          : (readN == vols.length ? 'Read again from ${vols.first.any.volumeText}' : 'Read ${next.any.volumeText}'),
+      icon: Icons.auto_stories,
+      big: true,
+      onTap: () => openBook(context, next.primary),
+    );
+  }
+
+  Widget _head(SeriesEntry e, List<String> editions, {bool compact = false}) {
+    final vols = e.volumes;
+    final readN = e.readCount;
+    final authors = vols.map((v) => v.any.displayAuthor).whereType<String>().toSet();
+    final time = vols.fold<int>(0, (a, v) => a + v.any.minutes);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SelectableText(e.label, style: ts(size: compact ? 18 : 24, w: FontWeight.w700)),
+        if (authors.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(authors.take(2).join(', '), style: ts(c: tk.sec, size: compact ? 13 : 14)),
+        ],
         const SizedBox(height: 8),
-        SeriesDownloads(vols),
-        if (editions.length > 1) ...[
-          const SizedBox(height: 8),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Seg<String>(
-              value: edition!,
-              items: [for (final e in editions) (e, e.isEmpty ? 'Light novel' : e)],
-              onChanged: (e) => setState(() {
-                edition = e;
-                ticked.clear();
-              }),
+        Text(
+          '${vols.length} volumes · $readN read${time > 0 ? ' · about ${(time / 60).round()} h of reading' : ''}',
+          style: ts(c: tk.faint, size: compact ? 12.5 : null),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(width: compact ? null : 360, child: Progress(value: vols.isEmpty ? 0 : readN / vols.length, height: compact ? 4 : 5)),
+        const SizedBox(height: 6),
+        Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            IconBtn(
+              vols.every((v) => v.favourite) ? Icons.favorite : Icons.favorite_border,
+              tooltip: 'Favourite every volume',
+              color: vols.every((v) => v.favourite) ? const Color(0xFFFF6FB1) : null,
+              onTap: () => Library.I.toggleFavourite(vols),
             ),
+            TagMenu(volumes: vols),
+          ],
+        ),
+        if (editions.length > 1) ...[
+          const SizedBox(height: 6),
+          Seg<String>(
+            value: edition!,
+            items: [for (final x in editions) (x, x.isEmpty ? 'Light novel' : x)],
+            onChanged: (x) => setState(() {
+              edition = x;
+              ticked.clear();
+            }),
           ),
         ],
-      ]),
+      ],
+    );
+  }
+
+  Widget _actions(SeriesEntry e) => Wrap(
+    spacing: 8,
+    runSpacing: 8,
+    children: [
+      Btn(selecting ? 'Done selecting' : 'Select', icon: selecting ? Icons.check : Icons.checklist, dense: true, onTap: () => setState(() {
+        selecting = !selecting;
+        if (!selecting) ticked.clear();
+      })),
+      Btn('Edit series', icon: Icons.edit_outlined, dense: true, onTap: () => seriesDialog(context, name: e.label, volumes: e.volumes)),
+      if (!isPhone) Btn('Change cover', icon: Icons.image_outlined, dense: true, onTap: _changeCover),
+    ],
+  );
+
+  Widget _desc(SeriesEntry e) => _description(
+    context,
+    _info.shownDescription,
+    onEdit: _editDescription,
+    onFind: isPhone || _info.shownDescription != null || Jobs.I.isQueued(Lookup.jobName)
+        ? null
+        : () => Lookup.run(series: [e], volumes: e.volumes),
+  );
+
+  Widget _pc(BuildContext context, SeriesEntry e, List<String> editions, double w) {
+    final cw = _coverW(w);
+    final twoCols = w - cw - 28 >= 900;
+    final info = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _head(e, editions),
+        const SizedBox(height: 12),
+        _actions(e),
+        const SizedBox(height: 18),
+        _desc(e),
+      ],
+    );
+    final books = _books(e);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: cw,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _coverBox(e.volumes.first.any, cw, coverKey: _info.cover, onChange: _changeCover),
+              const SizedBox(height: 12),
+              _readBtn(e),
+            ],
+          ),
+        ),
+        const SizedBox(width: 28),
+        Expanded(
+          child: twoCols
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 9, child: info),
+                    const SizedBox(width: 24),
+                    Expanded(flex: 11, child: books),
+                  ],
+                )
+              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [info, const SizedBox(height: 18), books]),
+        ),
+      ],
+    );
+  }
+
+  Widget _phone(BuildContext context, SeriesEntry e, List<String> editions, double w) {
+    final cw = _coverW(w);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _coverBox(e.volumes.first.any, cw, coverKey: _info.cover),
+            const SizedBox(width: 14),
+            Expanded(child: _head(e, editions, compact: true)),
+          ],
+        ),
+        const SizedBox(height: 14),
+        _readBtn(e),
+        const SizedBox(height: 8),
+        SeriesDownloads(e.volumes),
+        const SizedBox(height: 10),
+        _actions(e),
+        const SizedBox(height: 16),
+        _desc(e),
+        const SizedBox(height: 16),
+        _books(e),
+      ],
+    );
+  }
+
+  Widget _books(SeriesEntry e) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text('Books', style: ts(w: FontWeight.w700)),
+      const SizedBox(height: 6),
+      for (final v in e.volumes) _row(context, v, e.volumes),
+    ],
+  );
+
+  Widget _selectionBar(List<Volume> vols) {
+    final sel = vols.where((v) => ticked.contains(v.key)).toList();
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+      decoration: BoxDecoration(color: tk.panel, border: Border(top: BorderSide(color: tk.line))),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            Text('${sel.length} selected', style: ts(w: FontWeight.w600)),
+            const SizedBox(width: 10),
+            if (isPhone) ...[
+              Btn('Download', dense: true, icon: Icons.download_outlined, onTap: () {
+                Downloads.I.add(sel.map((v) => v.primary));
+                setState(ticked.clear);
+              }),
+              const SizedBox(width: 6),
+            ],
+            Btn('Mark read', dense: true, icon: Icons.done_all, onTap: () => Library.I.markRead(sel, true)),
+            const SizedBox(width: 6),
+            Btn('Mark unread', dense: true, icon: Icons.remove_done, onTap: () => Library.I.markRead(sel, false)),
+            const SizedBox(width: 6),
+            TagMenu(volumes: sel),
+            if (!isPhone) ...[
+              const SizedBox(width: 6),
+              Btn('Find descriptions', dense: true, icon: Icons.travel_explore, onTap: () => Lookup.run(volumes: sel)),
+              if (sel.length >= 2) ...[
+                const SizedBox(width: 6),
+                Btn('Combine as one book', dense: true, icon: Icons.merge, onTap: () {
+                  Library.I.combine(sel);
+                  setState(ticked.clear);
+                }),
+              ],
+            ],
+            const SizedBox(width: 12),
+            Btn.ghost('Clear', dense: true, onTap: () => setState(ticked.clear)),
+          ],
+        ),
+      ),
     );
   }
 
@@ -503,92 +802,108 @@ class _SeriesPageState extends State<SeriesPage> {
     final b = v.primary;
     final on = ticked.contains(v.key);
     final sub = b.subtitle ?? (b.metaTitle != null && normKey(b.metaTitle!) != normKey(b.displaySeries ?? '') ? b.displayTitle : '');
+    const cw = 56.0;
     return Hoverable(
       builder: (h) => GestureDetector(
         onTap: () {
-          if (HardwareKeyboard.instance.isControlPressed || ticked.isNotEmpty) {
-            setState(() => on ? ticked.remove(v.key) : ticked.add(v.key));
+          if (selecting || HardwareKeyboard.instance.isControlPressed || ticked.isNotEmpty) {
+            _toggle(v);
           } else {
             Nav.I.openVolume(v);
           }
         },
         onDoubleTap: isPhone ? null : () => openBook(context, b),
-        onLongPress: isPhone ? () => setState(() => on ? ticked.remove(v.key) : ticked.add(v.key)) : null,
+        onLongPress: () => setState(() {
+          selecting = true;
+          _toggle(v);
+        }),
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
           decoration: BoxDecoration(
             color: on ? lk.tint(tk.ground, 0.17) : (h ? tk.raised : null),
             borderRadius: BorderRadius.circular(lk.rControl),
+            border: Border.all(color: on ? lk.acc.withValues(alpha: 0.6) : Colors.transparent),
           ),
-          child: Row(children: [
-            if (!isPhone || ticked.isNotEmpty) ...[
-              SizedBox(width: 28, child: Checkbox(value: on, onChanged: (_) => setState(() => on ? ticked.remove(v.key) : ticked.add(v.key)))),
-              const SizedBox(width: 6),
-            ],
-            ClipRRect(
-              borderRadius: BorderRadius.circular(3),
-              child: SizedBox(
-                width: 40,
-                height: 60,
-                child: Stack(children: [
-                  Positioned.fill(child: BookCover(book: b, width: 40)),
-                  Positioned(left: 0, right: 0, bottom: 0, child: ProgressLine(value: v.progress)),
-                ]),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text(b.volumeText.isEmpty ? b.displayTitle : b.volumeText, style: ts(w: FontWeight.w600)),
-                if (sub.isNotEmpty) Text(sub, style: ts(c: tk.sec, size: 12), overflow: TextOverflow.ellipsis),
-              ]),
-            ),
-            if (v.isRead) Icon(Icons.check_circle, size: 16, color: tk.ok) else if (v.inProgress) Text('${(v.progress * 100).floor()}%', style: ts(c: lk.acc, w: FontWeight.w600, tab: true)),
-            if (isPhone) ...[
-              if (Downloads.I.isDone(b)) ...[const SizedBox(width: 8), Icon(Icons.download_done, size: 16, color: tk.sec)],
-              if (Downloads.I.isQueued(b)) ...[const SizedBox(width: 8), Icon(Icons.downloading, size: 16, color: lk.acc)],
-            ] else ...[
-            const SizedBox(width: 16),
-            SizedBox(width: 84, child: v.rating > 0 ? Stars(value: v.rating, size: 13) : const SizedBox()),
-            SizedBox(width: 70, child: Text(v.formats.map((f) => f.format.toUpperCase()).join(' '), style: ts(c: tk.faint, size: 11.5))),
-            SizedBox(width: 110, child: Text(lengthText(b).split(' · ').first, style: ts(c: tk.faint, size: 12))),
-            ],
-            PopupMenuButton<String>(
-              tooltip: '',
-              icon: Icon(Icons.more_horiz, size: 18, color: tk.sec),
-              onSelected: (k) {
-                switch (k) {
-                  case 'read':
-                    openBook(context, b);
-                  case 'mark':
-                    Library.I.markRead([v], !v.isRead);
-                  case 'prev':
-                    final prev = Library.I.previousVolumes(v);
-                    Library.I.markRead([...prev, v], true);
-                    toast('Marked ${prev.length + 1} volumes read');
-                  case 'folder':
-                    showInFolder(b);
-                  case 'download':
-                    Downloads.I.add([b]);
-                  case 'remove':
-                    Downloads.I.remove([b]);
-                }
-              },
-              itemBuilder: (_) => [
-                PopupMenuItem(value: 'read', child: Text('Read', style: ts())),
-                PopupMenuItem(value: 'mark', child: Text(v.isRead ? 'Mark unread' : 'Mark read', style: ts())),
-                PopupMenuItem(value: 'prev', child: Text('Mark this and earlier volumes read', style: ts())),
-                if (!isPhone) PopupMenuItem(value: 'folder', child: Text('Show in folder', style: ts())),
-                if (isPhone && !Downloads.I.isDone(b) && !Downloads.I.isQueued(b))
-                  PopupMenuItem(value: 'download', child: Text('Download (${humanSize(b.size)})', style: ts())),
-                if (isPhone && Downloads.I.isDone(b)) PopupMenuItem(value: 'remove', child: Text('Remove from this phone', style: ts())),
+          child: Row(
+            children: [
+              if (selecting) ...[
+                Icon(on ? Icons.check_circle : Icons.radio_button_unchecked, size: 20, color: on ? lk.acc : tk.faint),
+                const SizedBox(width: 8),
               ],
-            ),
-          ]),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: SizedBox(
+                  width: isPhone ? 50 : cw,
+                  height: (isPhone ? 50 : cw) * 1.5,
+                  child: Stack(
+                    children: [
+                      Positioned.fill(child: BookCover(book: b, width: cw)),
+                      Positioned(left: 0, right: 0, bottom: 0, child: ProgressLine(value: v.progress)),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(b.volumeText.isEmpty ? b.displayTitle : b.volumeText, style: ts(w: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    if (sub.isNotEmpty) Text(sub, style: ts(c: tk.sec, size: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 2),
+                    Text(
+                      [
+                        v.formats.map((f) => f.format.toUpperCase()).join(' '),
+                        lengthText(b).split(' · ').first,
+                      ].where((x) => x.isNotEmpty).join(' · '),
+                      style: ts(c: tk.faint, size: 11.5),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              if (v.rating > 0 && !isPhone) ...[Stars(value: v.rating, size: 12), const SizedBox(width: 8)],
+              if (v.isRead)
+                Icon(Icons.check_circle, size: 16, color: tk.ok)
+              else if (v.inProgress)
+                Text('${(v.progress * 100).floor()}%', style: ts(c: lk.acc, w: FontWeight.w600, tab: true)),
+              if (isPhone && Downloads.I.isQueued(b)) ...[const SizedBox(width: 8), Icon(Icons.downloading, size: 16, color: lk.acc)],
+              PopupMenuButton<String>(
+                tooltip: '',
+                icon: Icon(Icons.more_horiz, size: 18, color: tk.sec),
+                onSelected: (k) {
+                  switch (k) {
+                    case 'read':
+                      openBook(context, b);
+                    case 'mark':
+                      Library.I.markRead([v], !v.isRead);
+                    case 'prev':
+                      final prev = Library.I.previousVolumes(v);
+                      Library.I.markRead([...prev, v], true);
+                      toast('Marked ${prev.length + 1} volumes read');
+                    case 'folder':
+                      showInFolder(b);
+                    case 'download':
+                      Downloads.I.add([b]);
+                    case 'remove':
+                      Downloads.I.remove([b]);
+                  }
+                },
+                itemBuilder: (_) => [
+                  PopupMenuItem(value: 'read', child: Text('Read', style: ts())),
+                  PopupMenuItem(value: 'mark', child: Text(v.isRead ? 'Mark unread' : 'Mark read', style: ts())),
+                  PopupMenuItem(value: 'prev', child: Text('Mark this and earlier volumes read', style: ts())),
+                  if (!isPhone) PopupMenuItem(value: 'folder', child: Text('Show in folder', style: ts())),
+                  if (isPhone && !Downloads.I.isDone(b) && !Downloads.I.isQueued(b))
+                    PopupMenuItem(value: 'download', child: Text('Download (${humanSize(b.size)})', style: ts())),
+                  if (isPhone && Downloads.I.isDone(b)) PopupMenuItem(value: 'remove', child: Text('Remove from this phone', style: ts())),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
-

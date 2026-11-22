@@ -164,14 +164,17 @@ class Volume {
     return l;
   }
 
-  /// The file Read opens: the one read last, else the best format.
+  /// The file Read opens: the copy chosen as the default, else the best
+  /// format (an EPUB before a PDF). Reading progress is shared between copies.
   Book get primary {
-    Book? last;
     for (final f in files) {
-      if (f.lastReadAt > 0 && (last == null || f.lastReadAt > last.lastReadAt)) last = f;
+      if (f.preferred) return f;
     }
-    return last ?? files.first;
+    return files.first;
   }
+
+  /// Different versions of the book (not just the same file in another format).
+  bool get hasCopies => files.length > 1;
 
   /// One copy per format, preferring files not in a ZIP.
   List<Book> get formats {
@@ -283,6 +286,7 @@ class Library extends ChangeNotifier {
       ..addEntries(_books.map((b) => MapEntry(b.id, b)));
     _tags = Db.I.tags();
     _tagMap = Db.I.tagMap();
+    _seriesInfo = Db.I.seriesInfo();
     changed();
   }
 
@@ -340,18 +344,135 @@ class Library extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool visible(Book b) => !b.missing && (Settings.I.showCollections || !b.collection);
+  bool visible(Book b) => !b.missing && !b.outside && (Settings.I.showCollections || !b.collection);
 
   // ---------------- grouping ----------------
 
   Map<String, Volume> get volumes {
     if (_volumes != null) return _volumes!;
     final m = <String, List<Book>>{};
+    // The same book in two formats whose details differ (a PDF with no author,
+    // say) is still one book when the files have the same name.
+    final byStem = <String, String>{};
+    final alias = <String, String>{};
+    String find(String k) {
+      var x = k;
+      while (alias[x] != null && alias[x] != x) {
+        x = alias[x]!;
+      }
+      return x;
+    }
+
     for (final b in _books) {
       if (!visible(b)) continue;
-      m.putIfAbsent(b.volumeKey, () => []).add(b);
+      final key = b.volumeKey;
+      m.putIfAbsent(key, () => []).add(b);
+      if (b.userGroup != null) continue;
+      final stem = normKey(p.basenameWithoutExtension(b.fileName));
+      if (stem.length < 6 || RegExp(r'^\d+$').hasMatch(stem)) continue;
+      final sk = '${b.root.toLowerCase()}|$stem';
+      final other = byStem[sk];
+      if (other == null) {
+        byStem[sk] = key;
+      } else if (find(other) != find(key)) {
+        alias[find(key)] = find(other);
+      }
     }
-    return _volumes = {for (final e in m.entries) e.key: Volume(e.key, e.value)};
+    final merged = <String, List<Book>>{};
+    m.forEach((k, v) => merged.putIfAbsent(find(k), () => []).addAll(v));
+    _keyAlias = {for (final k in m.keys) k: find(k)};
+    return _volumes = {for (final e in merged.entries) e.key: Volume(e.key, e.value)};
+  }
+
+  Map<String, String> _keyAlias = {};
+
+  /// Reading progress goes to the book's other copies (its PDF, another version).
+  void shareProgress(Book b) {
+    final v = volumeOf(b);
+    if (v == null) return;
+    for (final f in v.files) {
+      if (f.id == b.id) continue;
+      f
+        ..progress = b.progress
+        ..lastReadAt = b.lastReadAt
+        // A place in one file means nothing in another: it opens at the same share of the book.
+        ..position = f.fingerprint == b.fingerprint ? b.position : '';
+      Db.I.updateReading(f);
+    }
+  }
+
+  // ---------------- combining by hand ----------------
+
+  /// These volumes become one book (their files are copies of each other).
+  void combine(List<Volume> vs) {
+    final g = newUid();
+    for (final v in vs) {
+      for (final f in v.files) {
+        f.userGroup = g;
+        Db.I.updateExtras(f);
+      }
+    }
+    changed();
+  }
+
+  /// Splits a book back into its files.
+  void separate(Volume v) {
+    for (final f in v.files) {
+      f.userGroup = 'solo-${newUid()}';
+      Db.I.updateExtras(f);
+    }
+    changed();
+  }
+
+  /// The copy Read opens first.
+  void setPreferred(Volume v, Book b) {
+    for (final f in v.files) {
+      f.preferred = f.id == b.id;
+      Db.I.updateExtras(f);
+    }
+    changed();
+  }
+
+  /// These volumes become a series, in this order.
+  void makeSeries(String name, List<Volume> ordered) {
+    for (var i = 0; i < ordered.length; i++) {
+      for (final f in ordered[i].files) {
+        f
+          ..userSeries = name
+          ..userVolume = (i + 1).toDouble();
+        Db.I.updateEdits(f);
+      }
+    }
+    changed();
+  }
+
+  // ---------------- descriptions and covers ----------------
+
+  Map<String, SeriesInfo> _seriesInfo = {};
+  SeriesInfo infoFor(String seriesKey) => _seriesInfo.putIfAbsent(seriesKey, () => SeriesInfo(seriesKey));
+  void saveInfo(SeriesInfo i) {
+    _seriesInfo[i.key] = i;
+    Db.I.saveSeriesInfo(i);
+    changed();
+  }
+
+  void setDescription(Volume v, String? text) {
+    final t = text?.trim();
+    for (final f in v.files) {
+      f.userDescription = t == null || t.isEmpty ? null : t;
+      Db.I.updateExtras(f);
+    }
+    changed();
+  }
+
+  void setCover(Volume v, String? key) {
+    for (final f in v.files) {
+      f.userCover = key;
+      Db.I.updateExtras(f);
+    }
+    Covers.I.version++;
+    Covers.I.changedNow();
+    changed();
   }
 
   /// Series key -> volumes in order, for series with two or more volumes.
@@ -378,7 +499,10 @@ class Library extends ChangeNotifier {
     return c != 0 ? c : naturalCompare(a.any.fileName, b.any.fileName);
   }
 
-  Volume? volumeOf(Book b) => volumes[b.volumeKey];
+  Volume? volumeOf(Book b) {
+    final all = volumes;
+    return all[b.volumeKey] ?? all[_keyAlias[b.volumeKey]];
+  }
   List<Volume>? seriesOf(Book b) => series[b.seriesKey];
 
   // ---------------- queries ----------------
@@ -986,7 +1110,9 @@ class Covers extends ChangeNotifier {
   int version = 0;
 
   String fileForFp(String fp) => p.join(AppPaths.I.thumbs, '$fp.jpg');
-  String fileFor(Book b) => fileForFp(b.fingerprint);
+  /// A cover picked by hand wins over the one made from the book.
+  String fileFor(Book b) => fileForFp(b.userCover ?? b.fingerprint);
+  String keyFor(Book b) => b.userCover ?? b.fingerprint;
 
   File? cached(Book b) {
     final f = File(fileFor(b));

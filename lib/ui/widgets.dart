@@ -20,7 +20,7 @@ TextStyle ts({double? size, FontWeight? w, Color? c, bool mono = false, bool tab
 enum BtnKind { primary, normal, ghost, dangerGhost, danger }
 
 class Btn extends StatefulWidget {
-  const Btn(this.label, {super.key, this.onTap, this.icon, this.kind = BtnKind.normal, this.tooltip, this.dense = false});
+  const Btn(this.label, {super.key, this.onTap, this.icon, this.kind = BtnKind.normal, this.tooltip, this.dense = false, this.big = false});
   final String label;
   final VoidCallback? onTap;
   final IconData? icon;
@@ -28,8 +28,14 @@ class Btn extends StatefulWidget {
   final String? tooltip;
   final bool dense;
 
-  const Btn.primary(this.label, {super.key, this.onTap, this.icon, this.tooltip, this.dense = false}) : kind = BtnKind.primary;
-  const Btn.ghost(this.label, {super.key, this.onTap, this.icon, this.tooltip, this.dense = false}) : kind = BtnKind.ghost;
+  /// A tall button that fills the width (the main Read button).
+  final bool big;
+
+  const Btn.primary(this.label, {super.key, this.onTap, this.icon, this.tooltip, this.dense = false, this.big = false})
+    : kind = BtnKind.primary;
+  const Btn.ghost(this.label, {super.key, this.onTap, this.icon, this.tooltip, this.dense = false})
+    : kind = BtnKind.ghost,
+      big = false;
 
   @override
   State<Btn> createState() => _BtnState();
@@ -67,7 +73,7 @@ class _BtnState extends State<Btn> {
         fg = Colors.white;
     }
     final child = Container(
-      height: widget.dense ? lk.hControl - 4 : lk.hControl,
+      height: widget.big ? 52 : (widget.dense ? lk.hControl - 4 : lk.hControl),
       padding: EdgeInsets.symmetric(horizontal: widget.label.isEmpty ? 6 : 10),
       decoration: BoxDecoration(
         color: bg,
@@ -79,16 +85,17 @@ class _BtnState extends State<Btn> {
             : null,
       ),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
+        mainAxisSize: widget.big ? MainAxisSize.max : MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (widget.icon != null) Icon(widget.icon, size: 16, color: fg),
-          if (widget.icon != null && widget.label.isNotEmpty) const SizedBox(width: 6),
-          if (widget.label.isNotEmpty)
-            Text(
-              widget.label,
-              style: ts(w: FontWeight.w600, c: fg),
-              overflow: TextOverflow.ellipsis,
-            ),
+          if (widget.icon != null) Icon(widget.icon, size: widget.big ? 24 : 16, color: fg),
+          if (widget.icon != null && widget.label.isNotEmpty) SizedBox(width: widget.big ? 10 : 6),
+          if (widget.label.isNotEmpty && widget.big)
+            Flexible(
+              child: Text(widget.label, style: ts(w: FontWeight.w600, c: fg, size: 16), overflow: TextOverflow.ellipsis),
+            )
+          else if (widget.label.isNotEmpty)
+            Text(widget.label, style: ts(w: FontWeight.w600, c: fg), overflow: TextOverflow.ellipsis),
         ],
       ),
     );

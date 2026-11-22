@@ -534,7 +534,8 @@ class Rail extends StatelessWidget {
             margin: const EdgeInsets.symmetric(vertical: 2),
             padding: const EdgeInsets.symmetric(vertical: 6),
             decoration: BoxDecoration(
-              color: active ? tk.raised : (h ? tk.raised.withValues(alpha: 0.5) : null),
+              color: active ? null : (h ? tk.raised.withValues(alpha: 0.5) : null),
+              gradient: active ? softGrad() : null,
               borderRadius: BorderRadius.circular(lk.rControl + 2),
             ),
             child: Column(
@@ -542,7 +543,7 @@ class Rail extends StatelessWidget {
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    Icon(icon, size: 19, color: active ? lk.acc : tk.sec),
+                    if (active) GradIcon(icon, size: 19) else Icon(icon, size: 19, color: tk.sec),
                     if (badge != null && badge > 0)
                       Positioned(
                         right: -10,

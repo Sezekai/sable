@@ -53,9 +53,13 @@ Settings → Storage shows each place with its size, and can open, move or clear
 - **Your files are never moved, renamed or changed.** History follows a file even when it's moved or renamed (it's recognised by its size and a fingerprint).
 - **Series:** in a light novel folder, each folder inside is a series. Volume numbers are read however they're written: `LN 06`, `Vol. 2`, `Vol-2`, `vol.12`, `volume 9`, `Volume-11`, `(1) Volume A`, `[Red Rising 01]`… Shop and version tags such as `Premium`, `[Yen Press][Kobo]` and `(v5.0)` are dropped. Books elsewhere use the series in their own details (calibre and EPUB 3).
 - **Editions:** folders like `Web Novel` and `Fan Translation` inside a series become editions with their own volume lists.
-- **Same volume, two formats:** an EPUB and a PDF (or a ZIP copy) of the same volume show as one book. It opens the EPUB, and "Open as PDF" is on its page.
+- **One entry per book:** an EPUB and a PDF (or other versions) of the same book show once, as the EPUB, with "Read the PDF" and the other copies on its page. Progress is shared between them and you choose the default copy. Copies Sable doesn't spot can be **combined** by hand (and separated again).
+- **Make a series** from any ticked books, then set its name, order, description and cover.
+- **Descriptions and covers:** missing descriptions are looked up online (Google Books, then Open Library) from Settings, a book or series page, or for ticked books. Any description can be written by hand, and any cover changed by pasting an image (or image link), dragging one in, or choosing a file.
+- **Default ebook app on Windows** (Settings → Opening ebooks): double-clicking an EPUB, MOBI or AZW3 opens it in Sable. Books outside the library are tracked in History and resume where you left off; if they're added later, their progress is already there.
 - **Cover grid** (Comfortable, Compact, Covers only) sized by the slider, + −, or Ctrl + wheel, plus a sortable **List**. A **Continue reading** strip sits at the top.
-- Cover badges: progress line, series read count, favourite, rating, times read, PDF.
+- Covers are 1.5 times as tall as they're wide everywhere. Titles use two lines when they need to (the author shows when the title fits on one).
+- Cover badges: progress line, series read count and PDF (small, in the corner), favourite, rating, times read.
 - **Book page:** cover, title, author, series and volume, description, length and reading time, formats, rating (half stars), favourite, tags, mark read or unread, mark previous volumes read, edit details, show in folder, details and reading history.
 - **Series page:** every volume with ticks, progress, rating and formats; Continue; editions; mark read in bulk.
 - **Filters**, each with its opposite: read, in progress, favourite, rated, in a series, light novels / books, PDF only, rating range, length, times read, read recently, tags, authors. Active filters show as pills.
@@ -65,7 +69,8 @@ Settings → Storage shows each place with its size, and can open, move or clear
 
 ### Reader
 - **Two pages side by side** when the window is wide (Auto), or always one or always two (D).
-- **Lithium-style settings** (the Aa button): theme, font (Literata, Inter, Georgia, Palatino or the book's own), size, line spacing, margins, justify, the book's own styles, pages or scrolling, and page-turn animation.
+- **Text and spacing** (A): font (Literata, PT Serif, Domine, Arbutus Slab, Georgia, Palatino, Inter, Segoe UI, Open Sans, Lato or the book's own), text size, line, word and paragraph spacing, paragraph indents, side and top/bottom margins in %. Every value has − and + buttons (tap the number to type one) in steps of .5 or 5%.
+- **Settings** (S): theme, pages at once, text colour, alignment (left, centre, right, justify), **same top line** (text always starts on the same line, even after a heading or a new chapter), turning, animation, controls and mouse.
 - Click the left or right of the page to turn, the middle for the bars. Arrow keys, Page Up/Down, Space and the mouse wheel turn pages too.
 - **Contents** (T), **bookmarks** (B), **search in the book** (/), and a progress slider.
 - Bars show the chapter, page of the chapter, percentage, and time left in the chapter and the book. When hidden, a slim line shows the chapter page, percentage and clock.

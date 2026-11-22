@@ -12,6 +12,8 @@ import '../core/library.dart';
 import '../core/log.dart';
 import '../core/paths.dart';
 import '../core/downloads.dart';
+import '../core/extras.dart';
+import '../core/file_assoc.dart';
 import '../core/platform.dart';
 import '../core/settings.dart';
 import '../core/sync_server.dart';
@@ -19,6 +21,9 @@ import 'look.dart';
 import 'phone.dart';
 import 'reader_page.dart';
 import 'widgets.dart';
+
+/// The section open on the phone (Android's back closes it first).
+final settingsSection = ValueNotifier<String?>(null);
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -72,7 +77,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: Listenable.merge([Settings.I, Look.I, Library.I]),
+      listenable: Listenable.merge([Settings.I, Look.I, Library.I, settingsSection]),
       builder: (context, _) => Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
         child: Column(
@@ -80,14 +85,18 @@ class _SettingsPageState extends State<SettingsPage> {
           children: [
             Row(
               children: [
-                Text('Settings', style: ts(size: 15, w: FontWeight.w700)),
+                if (isPhone && section != null) ...[
+                  IconBtn(Icons.arrow_back, size: 22, box: 40, tooltip: 'Back', onTap: () => setState(() => section = null)),
+                  const SizedBox(width: 4),
+                ],
+                Text(isPhone && section != null ? section! : 'Settings', style: ts(size: 15, w: FontWeight.w700)),
                 const SizedBox(width: 10),
-                Text('Changes apply straight away.', style: ts(c: tk.sec)),
+                if (!isPhone) Text('Changes apply straight away.', style: ts(c: tk.sec)),
               ],
             ),
             const SizedBox(height: 8),
             Expanded(
-              child: _columns([
+              child: _sections([
                 if (isPhone)
                   _group('Connection', 'Your PC is where the books are. The phone keeps the library, history and the books you download.', [
                     const PhoneConnection(),
@@ -159,6 +168,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       Settings.I.save();
                     },
                   ),
+                  if (!isPhone)
                   _row(
                     'Scroll distance',
                     _slider(
@@ -176,6 +186,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       Settings.I.save();
                     },
                   ),
+                  if (!isPhone)
                   _row(
                     'Mouse back / forward',
                     Seg<String>(
@@ -365,6 +376,26 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                   ),
                 ]),
+                _group('Descriptions and covers', 'Books and series without a description can have one looked up online (Google Books, then Open Library). Your own descriptions and covers are never replaced. Edit or change them on each book or series page.', [
+                  Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
+                    Btn('Find missing descriptions', icon: Icons.travel_explore, onTap: () {
+                      final all = Library.I.entries();
+                      Lookup.run(
+                        volumes: Library.I.volumes.values.where((v) => !v.any.missing).toList(),
+                        series: all.whereType<SeriesEntry>().toList(),
+                      );
+                      toast('Looking up descriptions: see the progress in the jobs bar');
+                    }),
+                    Text(
+                      '${Library.I.volumes.values.where((v) => !v.any.missing && v.primary.shownDescription == null).length} books without one',
+                      style: ts(c: tk.faint, size: 12),
+                    ),
+                  ]),
+                ]),
+                if (!isPhone && Platform.isWindows)
+                  _group('Opening ebooks', 'Make Sable the app that opens EPUB, MOBI and AZW3 files when you double-click them. Books outside the library are tracked (history, position) without being added; if you add them later, their progress is already there.', [
+                    const _DefaultApp(),
+                  ]),
                 if (!isPhone)
                 _group('Storage', 'Everywhere Sable keeps things, and how much space each uses.', [
                   for (final pl in _places()) _storageRow(pl),
@@ -424,34 +455,100 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
-  /// One column, or two side by side when the window is wide (maximised or full
-  /// screen). Groups are shared out so the two columns end up about as long.
-  Widget _columns(List<Widget> groups) => LayoutBuilder(
-    builder: (context, c) {
-      if (c.maxWidth < 1240) return ListView(children: groups);
-      final cols = [<Widget>[], <Widget>[]];
-      final h = [0, 0];
-      for (final g in groups) {
-        final w = g is _GroupBox ? g.weight : 4;
-        final i = h[0] <= h[1] ? 0 : 1;
-        cols[i].add(g);
-        h[i] += w;
+  String? get section => settingsSection.value;
+  set section(String? v) => settingsSection.value = v;
+  String? pcSection;
+
+  static IconData _iconFor(String t) => switch (t) {
+    'Connection' || 'Phone' => Icons.phone_android,
+    'Library folders' => Icons.folder_outlined,
+    'Look' => Icons.palette_outlined,
+    'Reader' => Icons.menu_book_outlined,
+    'Library' => Icons.grid_view,
+    'Descriptions and covers' => Icons.travel_explore,
+    'Opening ebooks' => Icons.open_in_new,
+    'Storage' => Icons.storage_outlined,
+    'Reset' => Icons.restart_alt,
+    _ => Icons.settings_outlined,
+  };
+
+  /// Sections: a column of them on the left on PC; on the phone a list to tap into.
+  Widget _sections(List<Widget> groups) {
+    final boxes = groups.whereType<_GroupBox>().toList();
+    if (isPhone) {
+      final open = boxes.where((b) => b.title == section).firstOrNull;
+      if (open != null) {
+        return ListView(children: [open]);
       }
-      return SingleChildScrollView(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(child: Column(children: cols[0])),
-            const SizedBox(width: 10),
-            Expanded(child: Column(children: cols[1])),
-          ],
-        ),
-      );
-    },
-  );
+      return ListView(children: [
+        for (final b in boxes)
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => setState(() => section = b.title),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+              child: Row(children: [
+                GradIcon(_iconFor(b.title), size: 24),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(b.title, style: ts(size: 15, w: FontWeight.w600)),
+                    Text(b.desc, style: ts(c: tk.faint, size: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  ]),
+                ),
+                Icon(Icons.chevron_right, color: tk.faint),
+              ]),
+            ),
+          ),
+      ]);
+    }
+    final cur = boxes.where((b) => b.title == pcSection).firstOrNull ?? boxes.first;
+    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      SizedBox(
+        width: 220,
+        child: ListView(children: [
+          for (final b in boxes)
+            Hoverable(
+              builder: (h) => GestureDetector(
+                onTap: () => setState(() => pcSection = b.title),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Container(
+                    margin: const EdgeInsets.only(bottom: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                    decoration: BoxDecoration(
+                      gradient: b == cur ? softGrad(0.28) : null,
+                      color: b != cur && h ? tk.raised : null,
+                      borderRadius: BorderRadius.circular(lk.rControl),
+                    ),
+                    child: Row(children: [
+                      b == cur ? GradIcon(_iconFor(b.title), size: 18) : Icon(_iconFor(b.title), size: 18, color: tk.sec),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(b.title,
+                            style: ts(w: b == cur ? FontWeight.w700 : FontWeight.w500, c: b == cur ? tk.text : tk.sec),
+                            overflow: TextOverflow.ellipsis),
+                      ),
+                    ]),
+                  ),
+                ),
+              ),
+            ),
+        ]),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: ListView(key: ValueKey(cur.title), children: [
+          ConstrainedBox(constraints: const BoxConstraints(maxWidth: 900), child: cur),
+        ]),
+      ),
+    ]);
+  }
 
   Widget _group(String title, String desc, List<Widget> children) => _GroupBox(
     weight: children.length + 3,
+    title: title,
+    desc: desc,
     child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
@@ -1018,14 +1115,57 @@ class _SettingsPageState extends State<SettingsPage> {
 
 /// A settings group, with a rough idea of how tall it is.
 class _GroupBox extends StatelessWidget {
-  const _GroupBox({required this.weight, required this.child});
+  const _GroupBox({required this.weight, required this.child, this.title = '', this.desc = ''});
   final int weight;
   final Widget child;
+  final String title;
+  final String desc;
   @override
   Widget build(BuildContext context) => child;
 }
 
 
+
+/// Settings → Opening ebooks (Windows): register Sable, then let Windows pick it.
+class _DefaultApp extends StatefulWidget {
+  const _DefaultApp();
+  @override
+  State<_DefaultApp> createState() => _DefaultAppState();
+}
+
+class _DefaultAppState extends State<_DefaultApp> {
+  bool? registered;
+  @override
+  void initState() {
+    super.initState();
+    FileAssoc.registered().then((v) {
+      if (mounted) setState(() => registered = v);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => Wrap(
+    spacing: 8,
+    runSpacing: 6,
+    crossAxisAlignment: WrapCrossAlignment.center,
+    children: [
+      Btn.primary('Make Sable the default for ebooks', icon: Icons.open_in_new, onTap: () async {
+        final ok = await FileAssoc.register();
+        if (mounted) setState(() => registered = ok);
+        if (!ok) {
+          toast('Couldn\'t register Sable with Windows');
+          return;
+        }
+        toast('In Windows settings, choose Sable for .epub (and .mobi, .azw3)');
+        await FileAssoc.openDefaultApps();
+      }),
+      Text(
+        registered == null ? '' : (registered! ? 'Sable is offered for EPUB, MOBI and AZW3 files.' : 'Not set up yet.'),
+        style: ts(c: tk.faint, size: 12),
+      ),
+    ],
+  );
+}
 
 /// Settings → Phone, on the PC: the pairing code and the paired phones.
 class _PcPhone extends StatefulWidget {

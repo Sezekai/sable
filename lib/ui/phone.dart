@@ -8,6 +8,7 @@ import '../core/db.dart';
 import '../core/downloads.dart';
 import '../core/jobs.dart';
 import '../core/library.dart';
+import '../core/settings.dart';
 import '../core/sync_client.dart';
 import '../core/sync_server.dart' show syncPort;
 import 'app.dart';
@@ -34,6 +35,10 @@ class PhoneShell extends StatelessWidget {
       nav.canGoBack ? nav.back() : nav.closeDetail();
       return true;
     }
+    if (nav.page == PageId.settings && settingsSection.value != null) {
+      settingsSection.value = null;
+      return true;
+    }
     if (nav.page != PageId.library) {
       nav.go(PageId.library);
       return true;
@@ -48,9 +53,9 @@ class PhoneShell extends StatelessWidget {
       builder: (context, _) {
         final nav = Nav.I;
         return PopScope(
-          canPop: nav.detail == null && nav.page == PageId.library,
+          canPop: false,
           onPopInvokedWithResult: (didPop, _) {
-            if (!didPop) _back();
+            if (!didPop && !_back()) SystemNavigator.pop();
           },
           child: Scaffold(
             backgroundColor: tk.ground,
@@ -62,7 +67,7 @@ class PhoneShell extends StatelessWidget {
                   child: Column(
                     children: [
                       Expanded(child: _content(nav)),
-                      const PhoneStatusStrip(),
+                      const PhoneProgressLine(),
                       const _Tabs(),
                     ],
                   ),
@@ -101,77 +106,201 @@ class _Tabs extends StatelessWidget {
   const _Tabs();
   @override
   Widget build(BuildContext context) {
-    final nav = Nav.I;
-    Widget tab(IconData icon, String label, PageId id, {int badge = 0}) {
-      final on = nav.page == id;
-      return Expanded(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {
-            if (on && id == PageId.library && nav.detail != null) {
-              nav.closeDetail();
-            } else {
-              nav.go(id);
-            }
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 7),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Stack(clipBehavior: Clip.none, children: [
-                Container(
-                  width: 52,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: on ? lk.tint(tk.raised, 0.25) : null,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(icon, size: 21, color: on ? lk.acc : tk.sec),
-                ),
-                if (badge > 0)
-                  Positioned(
-                    right: 4,
-                    top: -3,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(color: lk.acc, borderRadius: BorderRadius.circular(8)),
-                      child: Text('$badge', style: ts(size: 10, w: FontWeight.w700, c: lk.onAcc)),
-                    ),
-                  ),
-              ]),
-              const SizedBox(height: 3),
-              Text(label, style: ts(size: 11.5, c: on ? tk.text : tk.sec, w: on ? FontWeight.w600 : null)),
-            ]),
-          ),
-        ),
-      );
-    }
-
     return Container(
       decoration: BoxDecoration(
-        color: lk.starlight ? tk.panel.withValues(alpha: 0.9) : tk.panel,
+        color: lk.starlight ? tk.panel.withValues(alpha: 0.92) : tk.panel,
         border: Border(top: BorderSide(color: tk.line)),
       ),
       child: SafeArea(
         top: false,
+        minimum: EdgeInsets.zero,
         child: ListenableBuilder(
           listenable: Listenable.merge([Downloads.I, Nav.I]),
-          builder: (_, _) => Row(children: [
-            tab(Icons.auto_stories_outlined, 'Library', PageId.library),
-            tab(Icons.history, 'History', PageId.history),
-            tab(Icons.insights_outlined, 'Stats', PageId.stats),
-            tab(Icons.download_outlined, 'Downloads', PageId.downloads, badge: Downloads.I.queue.length),
-            tab(Icons.settings_outlined, 'Settings', PageId.settings),
-          ]),
+          builder: (context, _) {
+            final nav = Nav.I;
+            Widget tab(IconData icon, String label, PageId id, {int badge = 0}) {
+              final on = nav.page == id;
+              return Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    if (on && id == PageId.library) {
+                      // Library again: out of a book or series, else pick a tag to show.
+                      if (nav.detail != null) {
+                        nav.closeDetail();
+                      } else {
+                        tagSheet(context);
+                      }
+                    } else {
+                      nav.go(id);
+                    }
+                  },
+                  child: SizedBox(
+                    height: 56,
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            Container(
+                              width: 52,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                gradient: on ? softGrad(0.28) : null,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              alignment: Alignment.center,
+                              child: on ? GradIcon(icon, size: 21) : Icon(icon, size: 21, color: tk.sec),
+                            ),
+                            if (badge > 0)
+                              Positioned(
+                                right: 4,
+                                top: -3,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(gradient: lk.grad, borderRadius: BorderRadius.circular(8)),
+                                  child: Text('$badge', style: ts(size: 10, w: FontWeight.w700, c: lk.onAcc)),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 3),
+                        // One line always (the bar never changes height).
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 2),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              label,
+                              maxLines: 1,
+                              style: ts(size: 11.5, c: on ? tk.text : tk.sec, w: FontWeight.w600),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return Row(
+              children: [
+                tab(Icons.auto_stories_outlined, 'Library', PageId.library),
+                tab(Icons.history, 'History', PageId.history),
+                tab(Icons.insights_outlined, 'Stats', PageId.stats),
+                tab(Icons.download_outlined, 'Downloads', PageId.downloads, badge: Downloads.I.queue.length),
+                tab(Icons.settings_outlined, 'Settings', PageId.settings),
+              ],
+            );
+          },
         ),
       ),
     );
   }
 }
 
-/// A thin bar above the tabs while something runs: sync or downloads, with a
-/// progress bar, percentage, time taken and time left.
-class PhoneStatusStrip extends StatelessWidget {
-  const PhoneStatusStrip({super.key});
+/// Library tapped again: pick a tag to show only its books (in the section
+/// you're in: all, books or light novels; collections only if shown).
+Future<void> tagSheet(BuildContext context) {
+  final f = Library.I.filter;
+  bool inSection(Volume v) {
+    final ln = v.any.displayKind == Kind.ln;
+    return f.ln == Tri.any || (f.ln == Tri.yes ? ln : !ln);
+  }
+
+  final counts = <int, int>{};
+  for (final v in Library.I.volumes.values) {
+    if (!inSection(v)) continue;
+    if (v.any.collection && !Settings.I.showCollections) continue;
+    if (v.any.missing) continue;
+    for (final t in Library.I.tagsOfVolume(v)) {
+      counts[t] = (counts[t] ?? 0) + 1;
+    }
+  }
+  final tags = Library.I.tags.where((t) => (counts[t.id] ?? 0) > 0).toList();
+  final section = f.ln == Tri.any ? 'everything' : (f.ln == Tri.yes ? 'light novels' : 'books');
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: tk.panel,
+    showDragHandle: true,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(lk.rPanel + 6))),
+    builder: (c) {
+      final current = f.tags.length == 1 ? f.tags.first : null;
+      void pick(int? id) {
+        f.tags = id == null ? {} : {id};
+        f.excludeTags = {};
+        Library.I.changed();
+        Navigator.pop(c);
+      }
+
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text('Show a tag', style: ts(size: 16, w: FontWeight.w700)),
+              Text('In $section', style: ts(c: tk.faint, size: 12.5)),
+              const SizedBox(height: 10),
+              if (tags.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Text('No tags here yet. Tag books from their pages or by long-pressing them.', style: ts(c: tk.sec)),
+                )
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(c).height * 0.5),
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final t in tags)
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => pick(t.id),
+                          child: Container(
+                            margin: const EdgeInsets.symmetric(vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            decoration: BoxDecoration(
+                              gradient: current == t.id ? softGrad(0.25) : null,
+                              borderRadius: BorderRadius.circular(lk.rControl + 2),
+                            ),
+                            child: Row(
+                              children: [
+                                Container(width: 10, height: 10, decoration: BoxDecoration(color: Color(t.color), shape: BoxShape.circle)),
+                                const SizedBox(width: 12),
+                                Expanded(child: Text(t.name, style: ts(w: current == t.id ? FontWeight.w700 : FontWeight.w500))),
+                                Text('${counts[t.id]}', style: ts(c: tk.faint, tab: true)),
+                              ],
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              if (current != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Btn('Show all', icon: Icons.close, onTap: () => pick(null)),
+                    const Spacer(),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+/// A thin progress line above the tabs while something runs (a sync, downloads).
+/// The details are in Downloads and in Settings → Connection.
+class PhoneProgressLine extends StatelessWidget {
+  const PhoneProgressLine({super.key});
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -179,71 +308,27 @@ class PhoneStatusStrip extends StatelessWidget {
       builder: (context, _) {
         final j = Jobs.I.current;
         final d = Downloads.I;
-        String? title, detail;
         double? f;
-        Duration? elapsed, left;
-        VoidCallback? onTap;
+        var on = false;
         if (j != null) {
-          title = j.name;
-          detail = j.detail;
+          on = true;
           f = j.fraction;
-          elapsed = j.elapsed;
-          left = j.timeLeft;
-        } else if (d.queue.isNotEmpty) {
-          final running = d.queue.where((q) => q.state == DlState.running).firstOrNull;
-          title = d.paused
-              ? 'Downloads paused'
-              : running == null
-                  ? 'Downloads waiting for the PC'
-                  : 'Downloading ${d.queue.length} book${d.queue.length == 1 ? '' : 's'}';
-          detail = running?.title ?? '';
+        } else if (d.queue.isNotEmpty && !d.paused) {
+          on = true;
           f = d.batchFraction;
-          elapsed = d.batchElapsed;
-          left = d.batchTimeLeft;
-          onTap = () => Nav.I.go(PageId.downloads);
         }
-        if (title == null) return const SizedBox.shrink();
-        return GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(14, 7, 14, 8),
-            decoration: BoxDecoration(
-              color: tk.panel,
-              border: Border(top: BorderSide(color: tk.line)),
-            ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                Expanded(
-                  child: Text(
-                    detail == null || detail.isEmpty ? title : '$title · $detail',
-                    style: ts(size: 12.5, w: FontWeight.w600),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                Text(f == null ? '' : '${(f * 100).floor()}%', style: ts(size: 12.5, tab: true, w: FontWeight.w600)),
-              ]),
-              const SizedBox(height: 5),
-              Progress(value: f, height: 4),
-              const SizedBox(height: 4),
-              Text(
-                '${formatDuration(elapsed ?? Duration.zero)} so far'
-                '${left == null ? ' · working out time left' : ' · ${humanLeft(left)}'}',
-                style: ts(size: 11.5, c: tk.faint, tab: true),
-              ),
-            ]),
-          ),
-        );
+        if (!on) return const SizedBox(height: 2);
+        return SizedBox(height: 2, child: Progress(value: f, height: 2));
       },
     );
   }
 }
 
-// =====================================================================
-// The sync button in the library's header.
-// =====================================================================
-
+/// A thin bar above the tabs while something runs: sync or downloads, with a
+/// progress bar, percentage, time taken and time left.
 class SyncButton extends StatelessWidget {
-  const SyncButton({super.key});
+  const SyncButton({super.key, this.big = false});
+  final bool big;
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -264,7 +349,7 @@ class SyncButton extends StatelessWidget {
                 : c.online
                     ? 'Synced with ${c.pcName} ${c.lastSyncAt == 0 ? '' : timeAgo(c.lastSyncAt)}. Tap to sync now.'
                     : '${c.pcName} not reachable. Tap to try now.';
-        return IconBtn(icon, size: 20, tooltip: tip, color: c.paired && c.online ? lk.acc : null, onTap: () {
+        return IconBtn(icon, size: big ? 25 : 20, box: big ? 46 : null, tooltip: tip, color: c.paired && c.online ? lk.acc : null, onTap: () {
           if (!c.paired) {
             Nav.I.go(PageId.settings);
             WidgetsBinding.instance.addPostFrameCallback((_) => pairDialog(context));
@@ -710,7 +795,7 @@ class _DoneRow extends StatelessWidget {
               final v = Library.I.volumeOf(b);
               if (v != null) Nav.I.openVolume(v);
             },
-            child: SizedBox(width: 34, height: 50, child: ClipRRect(borderRadius: BorderRadius.circular(3), child: BookCover(book: b, width: 34))),
+            child: SizedBox(width: 36, height: 54, child: ClipRRect(borderRadius: BorderRadius.circular(3), child: BookCover(book: b, width: 36))),
           ),
         const SizedBox(width: 10),
         Expanded(

@@ -176,42 +176,71 @@ class LibraryPageState extends State<LibraryPage> {
 
   /// The phone's selection bar: two short rows instead of one long one.
   Widget _phoneSelectionBar(List<Volume> vs) => Container(
-        padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-        decoration: BoxDecoration(color: tk.panel, border: Border(top: BorderSide(color: tk.line))),
-        child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
+    padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
+    decoration: BoxDecoration(
+      color: tk.panel,
+      border: Border(top: BorderSide(color: tk.line)),
+    ),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
             Text('${vs.length} ticked', style: ts(w: FontWeight.w600)),
             const Spacer(),
-            Btn.ghost('All shown', dense: true,
-                onTap: () => setState(() => ticked.addAll(_entries.expand((x) => x.volumes).map((v) => v.key)))),
+            Btn.ghost(
+              'All shown',
+              dense: true,
+              onTap: () => setState(() => ticked.addAll(_entries.expand((x) => x.volumes).map((v) => v.key))),
+            ),
             Btn.ghost('Clear', dense: true, onTap: () => setState(ticked.clear)),
-          ]),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(children: [
-              Btn('Download', icon: Icons.download_outlined, dense: true, onTap: () {
-                Downloads.I.add(vs.map((v) => v.primary));
-                toast('Downloading ${vs.length} book${vs.length == 1 ? '' : 's'}');
-                setState(ticked.clear);
-              }),
+          ],
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              Btn(
+                'Download',
+                icon: Icons.download_outlined,
+                dense: true,
+                onTap: () {
+                  Downloads.I.add(vs.map((v) => v.primary));
+                  toast('Downloading ${vs.length} book${vs.length == 1 ? '' : 's'}');
+                  setState(ticked.clear);
+                },
+              ),
               const SizedBox(width: 6),
-              Btn('Read', icon: Icons.done_all, dense: true, onTap: () {
-                Library.I.markRead(vs, true);
-                toast('Marked ${vs.length} read');
-              }),
+              Btn(
+                'Read',
+                icon: Icons.done_all,
+                dense: true,
+                onTap: () {
+                  Library.I.markRead(vs, true);
+                  toast('Marked ${vs.length} read');
+                },
+              ),
               const SizedBox(width: 6),
-              Btn('Unread', icon: Icons.remove_done, dense: true, onTap: () {
-                Library.I.markRead(vs, false);
-                toast('Marked ${vs.length} unread');
-              }),
+              Btn(
+                'Unread',
+                icon: Icons.remove_done,
+                dense: true,
+                onTap: () {
+                  Library.I.markRead(vs, false);
+                  toast('Marked ${vs.length} unread');
+                },
+              ),
               const SizedBox(width: 6),
               Btn('Favourite', icon: Icons.favorite_border, dense: true, onTap: () => Library.I.toggleFavourite(vs)),
               const SizedBox(width: 6),
               TagMenu(volumes: vs),
-            ]),
+            ],
           ),
-        ]),
-      );
+        ),
+      ],
+    ),
+  );
 
   bool _searchOpen = false;
 
@@ -222,155 +251,214 @@ class LibraryPageState extends State<LibraryPage> {
     final showSearch = _searchOpen || f.search.isNotEmpty;
     final hasCollections = Library.I.books.any((b) => b.collection && !b.missing);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 6, 6),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          const SableLogo(size: 24),
-          const SizedBox(width: 8),
-          Text('Library', style: ts(size: 19, w: FontWeight.w700)),
-          const SizedBox(width: 8),
-          Text('${_entries.length}', style: ts(c: tk.faint, tab: true)),
-          const Spacer(),
-          const SyncButton(),
-          IconBtn(Icons.search, size: 20, active: showSearch, tooltip: 'Search', onTap: () {
-            setState(() => _searchOpen = !showSearch);
-            if (!showSearch) {
-              WidgetsBinding.instance.addPostFrameCallback((_) => Nav.I.searchFocus.requestFocus());
-            } else {
-              search.clear();
-              f.search = '';
-              Library.I.changed();
-            }
-          }),
-          Stack(clipBehavior: Clip.none, children: [
-            IconBtn(Icons.filter_list, size: 20, active: nFilters > 0, tooltip: 'Filters',
-                onTap: () => showDialog(context: context, barrierColor: Colors.black38, builder: (_) => const FiltersPanel())),
-            if (nFilters > 0)
-              Positioned(
-                right: 0,
-                top: -2,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                  decoration: BoxDecoration(color: lk.acc, borderRadius: BorderRadius.circular(8)),
-                  child: Text('$nFilters', style: ts(size: 9.5, w: FontWeight.w700, c: lk.onAcc)),
-                ),
-              ),
-          ]),
-          PopupMenuButton<String>(
-            tooltip: 'Sort and view',
-            padding: EdgeInsets.zero,
-            color: tk.panel,
-            onSelected: (v) {
-              if (v.startsWith('sort:')) {
-                final k = v.substring(5);
-                if (s.sort == k) {
-                  s.sortDesc = !s.sortDesc;
-                } else {
-                  s.sort = k;
-                }
-                if (k == 'random') Library.I.reshuffle();
-              } else if (v == 'list') {
-                s.listView = !s.listView;
-              } else if (v == 'continue') {
-                s.showContinue = !s.showContinue;
-              } else if (v == 'collections') {
-                s.showCollections = !s.showCollections;
-                Library.I.changed();
-              } else if (v == 'random') {
-                _random();
-                return;
-              } else if (v == 'bigger' || v == 'smaller') {
-                s.tileSize = (s.tileSize + (v == 'bigger' ? 16 : -16)).clamp(80, 300);
-              } else {
-                s.gridStyle = v;
-                s.listView = false;
-              }
-              s.save();
-            },
-            itemBuilder: (_) => [
-              for (final e in sortKeys.entries)
-                PopupMenuItem(
-                  value: 'sort:${e.key}',
-                  child: Row(children: [
-                    Expanded(child: Text(e.value, style: ts(c: s.sort == e.key ? lk.acc : tk.text))),
-                    if (s.sort == e.key) Icon(s.sortDesc ? Icons.arrow_downward : Icons.arrow_upward, size: 16, color: lk.acc),
-                  ]),
-                ),
-              const PopupMenuDivider(),
-              for (final (k, l) in [('comfortable', 'Comfortable grid'), ('compact', 'Compact grid'), ('cover', 'Covers only')])
-                PopupMenuItem(value: k, child: Text(l, style: ts(c: !s.listView && s.gridStyle == k ? lk.acc : tk.text))),
-              PopupMenuItem(value: 'list', child: Text('List', style: ts(c: s.listView ? lk.acc : tk.text))),
-              PopupMenuItem(value: 'bigger', child: Text('Bigger covers', style: ts())),
-              PopupMenuItem(value: 'smaller', child: Text('Smaller covers', style: ts())),
-              const PopupMenuDivider(),
-              PopupMenuItem(value: 'continue', child: Text('${s.showContinue ? 'Hide' : 'Show'} "Continue reading"', style: ts())),
-              if (hasCollections)
-                PopupMenuItem(value: 'collections', child: Text('${s.showCollections ? 'Hide' : 'Show'} collections', style: ts())),
-              PopupMenuItem(value: 'random', child: Text('Random book', style: ts())),
-            ],
-            child: const IgnorePointer(child: IconBtn(Icons.sort, size: 20, onTap: noop)),
-          ),
-        ]),
-        if (showSearch) ...[
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.only(right: 6),
-            child: Field(
-              controller: search,
-              focusNode: Nav.I.searchFocus,
-              hint: 'Search titles, series, authors, tags',
-              icon: Icons.search,
-              onChanged: (v) {
-                Library.I.filter.search = v;
-                Library.I.changed();
-              },
-            ),
-          ),
-        ],
-        const SizedBox(height: 6),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(children: [
-            Seg<Tri>(
-              value: f.ln,
-              items: const [(Tri.any, 'All'), (Tri.no, 'Books'), (Tri.yes, 'LNs')],
-              onChanged: (v) {
-                f.ln = v;
-                Library.I.changed();
-              },
-            ),
-            const SizedBox(width: 8),
-            Pill('Downloaded', active: f.downloaded == Tri.yes, onTap: () {
-              f.downloaded = f.downloaded == Tri.yes ? Tri.any : Tri.yes;
-              Library.I.changed();
-            }),
-            if (Settings.I.folders.length > 1) ...[
+      padding: const EdgeInsets.fromLTRB(12, 2, 4, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const SableLogo(size: 24),
               const SizedBox(width: 8),
-              Drop<String>(
-                value: f.folders.length == 1 && f.excludeFolders.isEmpty ? f.folders.first : '',
-                width: 150,
-                items: [
-                  ('', f.folders.length > 1 || f.excludeFolders.isNotEmpty ? 'Some folders' : 'All folders'),
-                  for (final lf in Settings.I.folders) (lf.path, _folderName(lf.path)),
+              Text('Library', style: ts(size: 19, w: FontWeight.w700)),
+              const SizedBox(width: 8),
+              Text('${_entries.length}', style: ts(c: tk.faint, tab: true)),
+              const Spacer(),
+              const SyncButton(big: true),
+              IconBtn(
+                Icons.search,
+                size: 25,
+                box: 46,
+                active: showSearch,
+                tooltip: 'Search',
+                onTap: () {
+                  setState(() => _searchOpen = !showSearch);
+                  if (!showSearch) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) => Nav.I.searchFocus.requestFocus());
+                  } else {
+                    search.clear();
+                    f.search = '';
+                    Library.I.changed();
+                  }
+                },
+              ),
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  IconBtn(
+                    Icons.filter_list,
+                    size: 25,
+                    box: 46,
+                    active: nFilters > 0,
+                    tooltip: 'Filters',
+                    onTap: () => showDialog(context: context, barrierColor: Colors.black38, builder: (_) => const FiltersPanel()),
+                  ),
+                  if (nFilters > 0)
+                    Positioned(
+                      right: 0,
+                      top: -2,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                        decoration: BoxDecoration(color: lk.acc, borderRadius: BorderRadius.circular(8)),
+                        child: Text(
+                          '$nFilters',
+                          style: ts(size: 9.5, w: FontWeight.w700, c: lk.onAcc),
+                        ),
+                      ),
+                    ),
                 ],
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Sort and view',
+                padding: EdgeInsets.zero,
+                color: tk.panel,
+                onSelected: (v) {
+                  if (v.startsWith('sort:')) {
+                    final k = v.substring(5);
+                    if (s.sort == k) {
+                      s.sortDesc = !s.sortDesc;
+                    } else {
+                      s.sort = k;
+                    }
+                    if (k == 'random') Library.I.reshuffle();
+                  } else if (v == 'list') {
+                    s.listView = !s.listView;
+                  } else if (v == 'continue') {
+                    s.showContinue = !s.showContinue;
+                  } else if (v == 'collections') {
+                    s.showCollections = !s.showCollections;
+                    Library.I.changed();
+                  } else if (v == 'random') {
+                    _random();
+                    return;
+                  } else if (v == 'bigger' || v == 'smaller') {
+                    s.tileSize = (s.tileSize + (v == 'bigger' ? 16 : -16)).clamp(80, 300);
+                  } else {
+                    s.gridStyle = v;
+                    s.listView = false;
+                  }
+                  s.save();
+                },
+                itemBuilder: (_) => [
+                  for (final e in sortKeys.entries)
+                    PopupMenuItem(
+                      value: 'sort:${e.key}',
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(e.value, style: ts(c: s.sort == e.key ? lk.acc : tk.text)),
+                          ),
+                          if (s.sort == e.key) Icon(s.sortDesc ? Icons.arrow_downward : Icons.arrow_upward, size: 16, color: lk.acc),
+                        ],
+                      ),
+                    ),
+                  const PopupMenuDivider(),
+                  for (final (k, l) in [('comfortable', 'Comfortable grid'), ('compact', 'Compact grid'), ('cover', 'Covers only')])
+                    PopupMenuItem(
+                      value: k,
+                      child: Text(l, style: ts(c: !s.listView && s.gridStyle == k ? lk.acc : tk.text)),
+                    ),
+                  PopupMenuItem(
+                    value: 'list',
+                    child: Text('List', style: ts(c: s.listView ? lk.acc : tk.text)),
+                  ),
+                  PopupMenuItem(
+                    value: 'bigger',
+                    child: Text('Bigger covers', style: ts()),
+                  ),
+                  PopupMenuItem(
+                    value: 'smaller',
+                    child: Text('Smaller covers', style: ts()),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'continue',
+                    child: Text('${s.showContinue ? 'Hide' : 'Show'} "Continue reading"', style: ts()),
+                  ),
+                  if (hasCollections)
+                    PopupMenuItem(
+                      value: 'collections',
+                      child: Text('${s.showCollections ? 'Hide' : 'Show'} collections', style: ts()),
+                    ),
+                  PopupMenuItem(
+                    value: 'random',
+                    child: Text('Random book', style: ts()),
+                  ),
+                ],
+                child: const IgnorePointer(child: IconBtn(Icons.sort, size: 25, box: 46, onTap: noop)),
+              ),
+            ],
+          ),
+          if (showSearch) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Field(
+                controller: search,
+                focusNode: Nav.I.searchFocus,
+                hint: 'Search titles, series, authors, tags',
+                icon: Icons.search,
                 onChanged: (v) {
-                  f.folders = v.isEmpty ? {} : {v};
-                  f.excludeFolders = {};
+                  Library.I.filter.search = v;
                   Library.I.changed();
                 },
               ),
-            ],
-            if (nFilters > 0) ...[
-              const SizedBox(width: 4),
-              IconBtn(Icons.filter_list_off, tooltip: 'Clear all filters', onTap: () {
-                Library.I.filter = LibFilter()..search = f.search;
-                Library.I.changed();
-              }),
-            ],
-            const SizedBox(width: 6),
-          ]),
-        ),
-      ]),
+            ),
+          ],
+          const SizedBox(height: 6),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                Seg<Tri>(
+                  value: f.ln,
+                  items: const [(Tri.any, 'All'), (Tri.no, 'Books'), (Tri.yes, 'LNs')],
+                  onChanged: (v) {
+                    f.ln = v;
+                    Library.I.changed();
+                  },
+                ),
+                const SizedBox(width: 8),
+                Pill(
+                  'Downloaded',
+                  active: f.downloaded == Tri.yes,
+                  onTap: () {
+                    f.downloaded = f.downloaded == Tri.yes ? Tri.any : Tri.yes;
+                    Library.I.changed();
+                  },
+                ),
+                for (final id in f.tags.where((_) => f.tags.length == 1))
+                  ...() {
+                    final t = Library.I.tags.where((t) => t.id == id).firstOrNull;
+                    if (t == null) return <Widget>[];
+                    return [
+                      const SizedBox(width: 8),
+                      Pill(
+                        t.name,
+                        active: true,
+                        onClose: () {
+                          f.tags = {};
+                          Library.I.changed();
+                        },
+                      ),
+                    ];
+                  }(),
+                if (nFilters > 0) ...[
+                  const SizedBox(width: 4),
+                  IconBtn(
+                    Icons.filter_list_off,
+                    tooltip: 'Clear all filters',
+                    onTap: () {
+                      Library.I.filter = LibFilter()..search = f.search;
+                      Library.I.changed();
+                    },
+                  ),
+                ],
+                const SizedBox(width: 6),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -498,9 +586,7 @@ class LibraryPageState extends State<LibraryPage> {
                     IconBtn(
                       Icons.collections_bookmark_outlined,
                       active: s.showCollections,
-                      tooltip: s.showCollections
-                          ? 'Collections shown. Click to hide them.'
-                          : 'Collections hidden. Click to show them.',
+                      tooltip: s.showCollections ? 'Collections shown. Click to hide them.' : 'Collections hidden. Click to show them.',
                       onTap: () {
                         s.showCollections = !s.showCollections;
                         s.save();
@@ -538,11 +624,7 @@ class LibraryPageState extends State<LibraryPage> {
                     s.save();
                   },
                   itemBuilder: (_) => [
-                    for (final (k, l) in [
-                      ('comfortable', 'Comfortable grid'),
-                      ('compact', 'Compact grid'),
-                      ('cover', 'Covers only'),
-                    ])
+                    for (final (k, l) in [('comfortable', 'Comfortable grid'), ('compact', 'Compact grid'), ('cover', 'Covers only')])
                       PopupMenuItem(
                         value: k,
                         child: Text(l, style: ts(c: !s.listView && s.gridStyle == k ? lk.acc : tk.text)),
@@ -618,12 +700,7 @@ class LibraryPageState extends State<LibraryPage> {
       () => f.ratingRange = Tri.any,
     );
     tri('Read ${f.readCountMin}+ times', 'Read fewer times', f.readCount, () => f.readCount = Tri.any);
-    tri(
-      '${f.minLength}–${f.maxLength} pages',
-      'Not ${f.minLength}–${f.maxLength} pages',
-      f.lengthRange,
-      () => f.lengthRange = Tri.any,
-    );
+    tri('${f.minLength}–${f.maxLength} pages', 'Not ${f.minLength}–${f.maxLength} pages', f.lengthRange, () => f.lengthRange = Tri.any);
     tri('Read in ${f.readInDays} days', 'Not read in ${f.readInDays} days', f.readIn, () => f.readIn = Tri.any);
     for (final d in [...f.folders, ...f.excludeFolders]) {
       final neg = f.excludeFolders.contains(d);
@@ -729,25 +806,45 @@ class LibraryPageState extends State<LibraryPage> {
           const SizedBox(width: 6),
           TagMenu(volumes: vs),
           const SizedBox(width: 6),
-          Btn('Find descriptions', icon: Icons.travel_explore, dense: true, tooltip: 'Look up descriptions online for the ones without', onTap: () {
-            Lookup.run(volumes: vs);
-            toast('Looking up descriptions');
-          }),
+          Btn(
+            'Find descriptions',
+            icon: Icons.travel_explore,
+            dense: true,
+            tooltip: 'Look up descriptions online for the ones without',
+            onTap: () {
+              Lookup.run(volumes: vs);
+              toast('Looking up descriptions');
+            },
+          ),
           if (vs.length >= 2) ...[
             const SizedBox(width: 6),
-            Btn('Combine', icon: Icons.merge, dense: true, tooltip: 'These are the same book (formats or versions): show them as one', onTap: () async {
-              if (await confirm(context, 'Combine ${vs.length} as one book?',
+            Btn(
+              'Combine',
+              icon: Icons.merge,
+              dense: true,
+              tooltip: 'These are the same book (formats or versions): show them as one',
+              onTap: () async {
+                if (await confirm(
+                  context,
+                  'Combine ${vs.length} as one book?',
                   'They\'ll show as one book, with progress shared between the copies. You can pick the default copy on the book\'s page, or separate them again.',
-                  confirmLabel: 'Combine')) {
-                Library.I.combine(vs);
-                setState(ticked.clear);
-              }
-            }),
+                  confirmLabel: 'Combine',
+                )) {
+                  Library.I.combine(vs);
+                  setState(ticked.clear);
+                }
+              },
+            ),
             const SizedBox(width: 6),
-            Btn('Make series', icon: Icons.library_books_outlined, dense: true, onTap: () async {
-              final ok = await seriesDialog(context, name: vs.first.primary.displaySeries ?? '', volumes: vs, isNew: true);
-              if (ok) setState(ticked.clear);
-            }),
+            Btn(
+              'Make series',
+              icon: Icons.library_books_outlined,
+              dense: true,
+              onTap: () async {
+                final ok = await seriesDialog(context, name: vs.first.primary.displaySeries ?? '', volumes: vs, isNew: true);
+                if (ok) setState(ticked.clear);
+              },
+            ),
           ],
           const Spacer(),
           Btn.ghost(
@@ -899,28 +996,32 @@ class LibraryPageState extends State<LibraryPage> {
 
   Widget _grid() {
     final s = Settings.I;
-    final textH = s.gridStyle == 'comfortable' ? 40.0 : 0.0;
     return SliverPadding(
-      padding: const EdgeInsets.fromLTRB(13, 0, 13, 0),
-      sliver: SliverGrid(
-        gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: s.tileSize,
-          mainAxisSpacing: 6,
-          crossAxisSpacing: 6,
-          mainAxisExtent: (s.tileSize - 6) * 1.5 + textH + 8,
-        ),
-        delegate: SliverChildBuilderDelegate((_, i) {
-          final e = _entries[i];
-          return EntryCard(
-            entry: e,
-            style: s.gridStyle,
-            ticked: e.volumes.every((v) => ticked.contains(v.key)),
-            anyTicked: ticked.isNotEmpty,
-            onTap: () => _open(e),
-            onDouble: () => _read(e),
-            onTick: () => _tickEntry(e),
+      padding: EdgeInsets.fromLTRB(isPhone ? 8 : 13, 0, isPhone ? 8 : 13, 0),
+      sliver: SliverLayoutBuilder(
+        builder: (context, sc) {
+          final g = gridSizes(sc.crossAxisExtent, s.tileSize, s.gridStyle);
+          return SliverGrid(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: g.cols,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+              mainAxisExtent: g.extent,
+            ),
+            delegate: SliverChildBuilderDelegate((_, i) {
+              final e = _entries[i];
+              return EntryCard(
+                entry: e,
+                style: s.gridStyle,
+                ticked: e.volumes.every((v) => ticked.contains(v.key)),
+                anyTicked: ticked.isNotEmpty,
+                onTap: () => _open(e),
+                onDouble: () => _read(e),
+                onTick: () => _tickEntry(e),
+              );
+            }, childCount: _entries.length),
           );
-        }, childCount: _entries.length),
+        },
       ),
     );
   }
@@ -940,7 +1041,7 @@ class LibraryPageState extends State<LibraryPage> {
             onDoubleTap: isPhone ? null : () => _read(e),
             onLongPress: isPhone ? () => _tickEntry(e) : null,
             child: Container(
-              height: 52,
+              height: isPhone ? 60 : 52,
               margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 1),
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
@@ -952,7 +1053,11 @@ class LibraryPageState extends State<LibraryPage> {
                   if (ticked.isNotEmpty) Checkbox(value: isTicked, onChanged: (_) => _tickEntry(e)),
                   ClipRRect(
                     borderRadius: BorderRadius.circular(3),
-                    child: SizedBox(width: 30, height: 44, child: BookCover(book: b, width: 30)),
+                    child: SizedBox(
+                      width: isPhone ? 34 : 30,
+                      height: isPhone ? 51 : 45,
+                      child: BookCover(book: b, width: isPhone ? 34 : 30),
+                    ),
                   ),
                   const SizedBox(width: 10),
                   Expanded(
@@ -974,30 +1079,33 @@ class LibraryPageState extends State<LibraryPage> {
                       ],
                     ),
                   ),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      b.displayAuthor ?? '',
-                      style: ts(c: tk.sec),
-                      overflow: TextOverflow.ellipsis,
+                  if (!isPhone)
+                    Expanded(
+                      flex: 3,
+                      child: Text(
+                        b.displayAuthor ?? '',
+                        style: ts(c: tk.sec),
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
                   SizedBox(
-                    width: 90,
+                    width: isPhone ? 64 : 90,
                     child: Text(
                       series ? '${e.readCount}/${e.volumes.length} read' : '${(v.progress * 100).floor()}%',
                       style: ts(c: tk.sec, tab: true),
                     ),
                   ),
-                  SizedBox(width: 80, child: v.rating > 0 ? Stars(value: v.rating, size: 13) : const SizedBox()),
-                  SizedBox(
-                    width: 90,
-                    child: Text(v.lastReadAt > 0 ? dateText(v.lastReadAt) : '', style: ts(c: tk.faint, size: 12)),
-                  ),
-                  SizedBox(
-                    width: 56,
-                    child: Text(v.files.map((x) => x.format.toUpperCase()).toSet().join(' '), style: ts(c: tk.faint, size: 11)),
-                  ),
+                  if (!isPhone) SizedBox(width: 80, child: v.rating > 0 ? Stars(value: v.rating, size: 13) : const SizedBox()),
+                  if (!isPhone)
+                    SizedBox(
+                      width: 90,
+                      child: Text(v.lastReadAt > 0 ? dateText(v.lastReadAt) : '', style: ts(c: tk.faint, size: 12)),
+                    ),
+                  if (!isPhone)
+                    SizedBox(
+                      width: 56,
+                      child: Text(v.files.map((x) => x.format.toUpperCase()).toSet().join(' '), style: ts(c: tk.faint, size: 11)),
+                    ),
                 ],
               ),
             ),
@@ -1121,6 +1229,36 @@ Widget badge(IconData? icon, String? text, {Color? color}) => Container(
   ),
 );
 
+/// Small see-through tag flush in the cover's top-left corner.
+Widget cornerBadge(IconData? icon, String text, double radius) => Container(
+  padding: const EdgeInsets.fromLTRB(4, 1.5, 5, 2),
+  decoration: BoxDecoration(
+    color: Colors.black.withValues(alpha: 0.5),
+    borderRadius: BorderRadius.only(bottomRight: Radius.circular(radius + 2)),
+  ),
+  child: Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (icon != null) ...[Icon(icon, size: 10, color: Colors.white), const SizedBox(width: 2)],
+      Text(
+        text,
+        style: ts(size: 9.5, c: Colors.white, w: FontWeight.w600, tab: true),
+      ),
+    ],
+  ),
+);
+
+/// Grid cell sizes: real column width, so covers keep a 1.5 height-to-width shape.
+const double gridTextH = 32;
+({int cols, double itemW, double extent}) gridSizes(double width, double tile, String style) {
+  const gap = 6.0;
+  final cols = ((width + gap) / (tile + gap)).ceil().clamp(1, 99);
+  final itemW = (width - gap * (cols - 1)) / cols;
+  final coverW = itemW - 6;
+  final textH = style == 'comfortable' ? gridTextH + 4 : 0.0;
+  return (cols: cols, itemW: itemW, extent: coverW * 1.5 + 6 + textH);
+}
+
 class EntryCard extends StatelessWidget {
   const EntryCard({
     super.key,
@@ -1164,24 +1302,16 @@ class EntryCard extends StatelessWidget {
               child: BookCover(book: b, width: w),
             ),
             if (series != null)
-              Positioned(left: 6, top: 6, child: badge(Icons.layers_outlined, '${series.readCount}/${series.volumes.length}')),
-            if (fav) Positioned(right: 6, top: 6, child: badge(Icons.favorite, null, color: const Color(0xFFFF6FB1))),
-            if (pdfOnly && style != 'cover') Positioned(left: 6, top: 6, child: badge(null, 'PDF')),
+              Positioned(
+                left: 0,
+                top: 0,
+                child: cornerBadge(Icons.layers_outlined, '${series.readCount}/${series.volumes.length}', lk.rControl),
+              ),
+            if (fav) Positioned(right: 5, top: 5, child: badge(Icons.favorite, null, color: const Color(0xFFFF6FB1))),
+            if (pdfOnly && style != 'cover') Positioned(left: 0, top: 0, child: cornerBadge(null, 'PDF', lk.rControl)),
             if (r > 0 && style != 'cover')
-              Positioned(left: 6, bottom: 8, child: badge(Icons.star_rounded, r.toString().replaceAll('.0', ''))),
-            if (reads > 1) Positioned(right: 6, bottom: 8, child: badge(null, '×$reads')),
-            // Phone: downloaded (all of a series, or how many).
-            if (isPhone) ...() {
-              final n = e.volumes.where((x) => x.files.any(Downloads.I.isDone)).length;
-              if (n == 0) return const <Widget>[];
-              return [
-                Positioned(
-                  right: 6,
-                  top: fav ? 32 : 6,
-                  child: badge(Icons.download_done, series == null || n == e.volumes.length ? null : '$n'),
-                ),
-              ];
-            }(),
+              Positioned(left: 5, bottom: 7, child: badge(Icons.star_rounded, r.toString().replaceAll('.0', ''))),
+            if (reads > 1) Positioned(right: 5, bottom: 7, child: badge(null, '×$reads')),
             if (style == 'compact')
               Positioned(
                 left: 0,
@@ -1252,26 +1382,41 @@ class EntryCard extends StatelessWidget {
                       child: Container(
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(lk.rControl - 1),
-                          boxShadow: [
-                            BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 8, offset: const Offset(0, 3)),
-                          ],
+                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 8, offset: const Offset(0, 3))],
                         ),
                         child: ClipRRect(borderRadius: BorderRadius.circular(lk.rControl - 1), child: cover),
                       ),
                     ),
                     if (style == 'comfortable') ...[
-                      const SizedBox(height: 5),
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: ts(size: 12.5, w: FontWeight.w600),
-                      ),
-                      Text(
-                        sub,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: ts(size: 11.5, c: tk.faint),
+                      const SizedBox(height: 4),
+                      SizedBox(
+                        height: gridTextH,
+                        width: double.infinity,
+                        child: LayoutBuilder(
+                          builder: (context, tc) {
+                            // Long titles get both lines; the author shows only when the title fits on one.
+                            final tStyle = ts(size: 11, w: FontWeight.w600).copyWith(height: 1.3);
+                            final tp = TextPainter(
+                              text: TextSpan(text: title, style: tStyle),
+                              maxLines: 1,
+                              textDirection: TextDirection.ltr,
+                            )..layout(maxWidth: tc.maxWidth);
+                            final oneLine = !tp.didExceedMaxLines;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(title, maxLines: oneLine ? 1 : 2, overflow: TextOverflow.ellipsis, style: tStyle),
+                                if (oneLine && sub.isNotEmpty)
+                                  Text(
+                                    sub,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: ts(size: 10.5, c: tk.faint).copyWith(height: 1.3),
+                                  ),
+                              ],
+                            );
+                          },
+                        ),
                       ),
                     ],
                   ],
@@ -1298,12 +1443,7 @@ class TagMenu extends StatelessWidget {
       tooltip: '',
       onSelected: (id) async {
         if (id == -1) {
-          final name = await ask(
-            context,
-            'New tag',
-            body: 'Tags group books, like "To read" or "On hold".',
-            confirmLabel: 'Create tag',
-          );
+          final name = await ask(context, 'New tag', body: 'Tags group books, like "To read" or "On hold".', confirmLabel: 'Create tag');
           if (name == null || name.isEmpty) return;
           final tag = Library.I.createTag(name);
           Library.I.addTag(tag, volumes);

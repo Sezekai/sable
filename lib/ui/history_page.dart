@@ -171,8 +171,8 @@ class _HistoryPageState extends State<HistoryPage> {
         color: Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         child: Row(children: [
-          SizedBox(width: 36, height: 52, child: ClipRRect(borderRadius: BorderRadius.circular(3), child: BookCover(book: t, width: 36))),
-          const SizedBox(width: 10),
+          SizedBox(width: 58, height: 87, child: ClipRRect(borderRadius: BorderRadius.circular(4), child: BookCover(book: t, width: 58))),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(t.inSeries ? '${t.cardTitle}${t.volumeText.isEmpty ? '' : ' · ${t.volumeText}'}' : t.displayTitle,
@@ -199,7 +199,7 @@ class _HistoryPageState extends State<HistoryPage> {
         child: Row(
           children: [
             SizedBox(
-              width: 42,
+              width: 40,
               height: 60,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(4),

@@ -94,7 +94,7 @@ const tokenLabels = <String, String>{
   'pageMuted': 'Book page details (status line)',
 };
 
-const defaultAccentFor = {'OLED black': 'Violet → Pink', 'Starlight': 'Silver → Violet'};
+const defaultAccentFor = {'OLED black': 'Sable', 'Starlight': 'Sable'};
 
 Color hexColor(String h) {
   var s = h.replaceAll('#', '').trim();
@@ -124,26 +124,29 @@ const themes = <String, Tokens>{
     pageFg: Color(0xFFD8D8DE),
     pageMuted: Color(0xFF5E5E66),
   ),
+  // Black, with Ginkgo's "Deep space" stars behind everything.
   'Starlight': Tokens(
-    ground: Color(0xFF05070F),
-    rail: Color(0xFF03050B),
-    panel: Color(0xFF0A0F1E),
-    raised: Color(0xFF111930),
-    raised2: Color(0xFF19233F),
-    field: Color(0xFF040710),
-    line: Color(0xFF162038),
-    line2: Color(0xFF243150),
-    text: Color(0xFFE8ECF8),
-    sec: Color(0xFFA3ACC8),
-    faint: Color(0xFF6E7898),
-    stage: Color(0xFF03050B),
-    pageBg: Color(0xFF060914),
-    pageFg: Color(0xFFD5DBEC),
-    pageMuted: Color(0xFF5A6482),
+    ground: Color(0xFF000000),
+    rail: Color(0xFF000000),
+    panel: Color(0xFF09090C),
+    raised: Color(0xFF141418),
+    raised2: Color(0xFF1D1D23),
+    field: Color(0xFF050507),
+    line: Color(0xFF1A1A20),
+    line2: Color(0xFF2A2A32),
+    text: Color(0xFFECECF2),
+    sec: Color(0xFFA6A6B2),
+    faint: Color(0xFF6F6F7B),
+    stage: Color(0xFF000000),
+    pageBg: Color(0xFF000000),
+    pageFg: Color(0xFFD8D8E0),
+    pageMuted: Color(0xFF5F5F6A),
   ),
 };
 
 final Map<String, List<Color>> accentPresets = {
+  // The logo's own gradient.
+  'Sable': [hexColor('#b56ce8'), hexColor('#e36dc6')],
   'Violet → Pink': [hexColor('#9b6bff'), hexColor('#ff6fb1')],
   'Silver → Violet': [hexColor('#c9d4ff'), hexColor('#9b6bff')],
   'Violet → Blue': [hexColor('#9b6bff'), hexColor('#4f8dff')],
@@ -197,7 +200,7 @@ class Look extends ChangeNotifier {
       final c = customAccents[theme];
       if (c != null && c.isNotEmpty) return c.map(hexColor).toList();
     }
-    return accentPresets[accentName] ?? accentPresets['Violet → Pink']!;
+    return accentPresets[accentName] ?? accentPresets['Sable']!;
   }
 
   bool themeEdited(String name) =>
@@ -238,10 +241,13 @@ class Look extends ChangeNotifier {
       if (th != null && themes.containsKey(th)) theme = th;
       // Version 1 had one accent for both themes.
       final a = m['accent'] as String?;
-      if (a != null && accentPresets.containsKey(a)) accents[theme] = a;
+      if (a != null && accentPresets.containsKey(a) && a != 'Violet → Pink') accents[theme] = a;
       final ac = m['accents'];
       if (ac is Map) {
         for (final e in ac.entries) {
+          // Before 1.4 the defaults were other gradients: those move to the logo's.
+          const oldDefaults = {'OLED black': 'Violet → Pink', 'Starlight': 'Silver → Violet'};
+          if (oldDefaults[e.key] == e.value) continue;
           if (themes.containsKey(e.key) && (accentPresets.containsKey(e.value) || e.value == 'Custom')) {
             accents[e.key as String] = e.value as String;
           }
@@ -377,6 +383,14 @@ class Look extends ChangeNotifier {
         checkColor: WidgetStatePropertyAll(onAcc),
         side: BorderSide(color: t.line2, width: 1.5),
       ),
+      // Toggles in the accent (the middle of its gradient, the logo's colours).
+      switchTheme: SwitchThemeData(
+        trackColor: WidgetStateProperty.resolveWith(
+          (s) => s.contains(WidgetState.selected) ? Color.lerp(accent.first, accent.last, 0.5) : t.raised2,
+        ),
+        thumbColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? Colors.white : t.sec),
+        trackOutlineColor: WidgetStateProperty.resolveWith((s) => s.contains(WidgetState.selected) ? Colors.transparent : t.line2),
+      ),
       sliderTheme: SliderThemeData(
         activeTrackColor: acc,
         inactiveTrackColor: t.raised2,
@@ -416,26 +430,28 @@ class StarField extends StatelessWidget {
 class _StarPainter extends CustomPainter {
   _StarPainter(this.c);
   final Color c;
+
+  // Ginkgo's "Deep space": plain stars on black, a few tinted, a few bigger with a halo.
+  static const _white = Color(0xFFFFFFFF), _lav = Color(0xFFBEB4FF), _aqua = Color(0xFFA0FFEB), _warm = Color(0xFFFFE2B8);
+
   @override
   void paint(Canvas canvas, Size size) {
     final rnd = math.Random(7);
-    // A soft glow in one corner, like a distant nebula.
-    // A faint wash of the accent from the top right, like a distant glow.
-    final glow = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topRight,
-        end: Alignment.center,
-        colors: [c.withValues(alpha: 0.10), c.withValues(alpha: 0.0)],
-      ).createShader(Offset.zero & size);
-    canvas.drawRect(Offset.zero & size, glow);
-    final n = (size.width * size.height / 5200).clamp(80, 700).toInt();
-    final p = Paint();
+    final n = (size.width * size.height / 820 * 0.45).clamp(60, 4000).toInt();
+    final p = Paint()..isAntiAlias = true;
     for (var i = 0; i < n; i++) {
       final x = rnd.nextDouble() * size.width, y = rnd.nextDouble() * size.height;
-      final big = rnd.nextDouble() < 0.06;
-      final a = 0.18 + rnd.nextDouble() * (big ? 0.6 : 0.35);
-      p.color = Color.lerp(const Color(0xFFFFFFFF), const Color(0xFFB8C6FF), rnd.nextDouble())!.withValues(alpha: a);
-      canvas.drawCircle(Offset(x, y), big ? 1.3 : 0.7, p);
+      final big = rnd.nextDouble() > 0.965;
+      final r = big ? 1.0 + rnd.nextDouble() * 0.7 : 0.3 + rnd.nextDouble() * 0.5;
+      final k = rnd.nextDouble();
+      final col = k > 0.88 ? _lav : (k > 0.8 ? _aqua : (k > 0.74 ? _warm : _white));
+      final a = ((0.35 + rnd.nextDouble() * 0.6) * 0.9).clamp(0.0, 1.0);
+      p.color = col.withValues(alpha: a);
+      canvas.drawCircle(Offset(x, y), r, p);
+      if (big && rnd.nextDouble() > 0.5) {
+        p.color = col.withValues(alpha: 0.12 * 0.9);
+        canvas.drawCircle(Offset(x, y), r * 3, p);
+      }
     }
   }
 

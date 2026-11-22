@@ -21,11 +21,11 @@ class _StatsPageState extends State<StatsPage> {
   String period = 'all';
 
   int get since => switch (period) {
-        'year' => DateTime(DateTime.now().year).millisecondsSinceEpoch ~/ 1000,
-        'month' => DateTime(DateTime.now().year, DateTime.now().month).millisecondsSinceEpoch ~/ 1000,
-        '30' => nowSec() - 30 * 86400,
-        _ => 0,
-      };
+    'year' => DateTime(DateTime.now().year).millisecondsSinceEpoch ~/ 1000,
+    'month' => DateTime(DateTime.now().year, DateTime.now().month).millisecondsSinceEpoch ~/ 1000,
+    '30' => nowSec() - 30 * 86400,
+    _ => 0,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -121,125 +121,254 @@ class _StatsPageState extends State<StatsPage> {
     final avgSession = sessions.isEmpty ? 0 : secs ~/ sessions.length;
     final pcShare = sessions.isEmpty ? 1.0 : sessions.where((s) => s.device == 'PC').length / sessions.length;
 
-    Widget tile(String label, String value, [String? sub]) => Container(
-          width: 178,
+    return LayoutBuilder(
+      builder: (context, lc) {
+        // Fill the width: tiles at least two a row, cards one or two a row.
+        final avail = lc.maxWidth - 24;
+        final tileCols = max(2, ((avail + 10) / (isPhone ? 150 : 190)).floor());
+        final tileW = ((avail - 10 * (tileCols - 1)) / tileCols).floorToDouble();
+        final cardCols = max(1, ((avail + 10) / 520).floor());
+        final cardW = ((avail - 10 * (cardCols - 1)) / cardCols).floorToDouble();
+        final segW = isPhone || avail < 700 ? avail : null;
+
+        Widget tile(String label, String value, [String? sub]) => Container(
+          width: tileW,
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(color: tk.panel, borderRadius: BorderRadius.circular(lk.rPanel), border: Border.all(color: tk.line)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: ts(c: tk.sec, size: 12)),
-            const SizedBox(height: 4),
-            Text(value, style: ts(size: 22, w: FontWeight.w700, tab: true)),
-            if (sub != null) Text(sub, style: ts(c: tk.faint, size: 11.5)),
-          ]),
+          decoration: BoxDecoration(
+            color: tk.panel,
+            borderRadius: BorderRadius.circular(lk.rPanel),
+            border: Border.all(color: tk.line),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: ts(c: tk.sec, size: 12),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(value, style: ts(size: 22, w: FontWeight.w700, tab: true)),
+              ),
+              if (sub != null)
+                Text(
+                  sub,
+                  style: ts(c: tk.faint, size: 11.5),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+            ],
+          ),
         );
 
-    Widget card(String title, Widget child, {double width = 560}) => Container(
-          width: width,
+        Widget card(String title, Widget child) => Container(
+          width: cardW,
           padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: tk.panel, borderRadius: BorderRadius.circular(lk.rPanel), border: Border.all(color: tk.line)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: ts(w: FontWeight.w700)),
-            const SizedBox(height: 10),
-            child,
-          ]),
+          decoration: BoxDecoration(
+            color: tk.panel,
+            borderRadius: BorderRadius.circular(lk.rPanel),
+            border: Border.all(color: tk.line),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: ts(w: FontWeight.w700)),
+              const SizedBox(height: 10),
+              child,
+            ],
+          ),
         );
 
-    const mn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Text('Stats', style: ts(size: 15, w: FontWeight.w700)),
-          const SizedBox(width: 10),
-          Expanded(child: Text('How much you read, when, and what.', style: ts(c: tk.sec))),
-        ]),
-        const SizedBox(height: 8),
-        PanelBox(
-          child: Wrap(spacing: 8, runSpacing: 8, children: [
-            Seg<Tri>(
-              value: kind,
-              items: const [(Tri.any, 'Everything'), (Tri.yes, 'Light novels'), (Tri.no, 'Books')],
-              onChanged: (v) => setState(() => kind = v),
-            ),
-            Seg<String>(
-              value: period,
-              items: const [('all', 'All time'), ('year', 'This year'), ('month', 'This month'), ('30', 'Last 30 days')],
-              onChanged: (v) => setState(() => period = v),
-            ),
-          ]),
-        ),
-        const SizedBox(height: 10),
-        Expanded(
-          child: ListView(children: [
-            Wrap(spacing: 10, runSpacing: 10, children: [
-              tile('Finished', '${completedIds.length}', 'different books'),
-              tile('Total reads', '${comps.length}', 'including re-reads'),
-              tile('Pages read', '$pagesRead', '1 page = 1,500 letters'),
-              tile('Time reading', humanHours(secs)),
-              tile('Reading speed', speed == 0 ? '–' : '$speed', 'pages an hour'),
-              tile('Series read from', '${seriesDone.length}'),
-              tile('Books started', '$started', 'of ${titles.length} in the library'),
-              tile('Unread', '${titles.where((t) => !t.isRead).length}'),
-              tile('In progress', '${titles.where((t) => t.inProgress).length}'),
-              tile('Favourites', '${titles.where((t) => t.favourite).length}'),
-              tile('Average rating', avgRating == 0 ? '–' : avgRating.toStringAsFixed(2), '${rated.length} rated'),
-              tile('Library size', humanSize(titles.fold<int>(0, (a, t) => a + t.any.size)),
-                  'about ${titles.fold<int>(0, (a, t) => a + t.length)} pages'),
-              tile('Authors', '${artists.length}'),
-              tile('Streak', '$current ${current == 1 ? 'day' : 'days'}', 'longest: $longest ${longest == 1 ? 'day' : 'days'}'),
-              tile('Average session', humanHours(avgSession)),
-              tile('Read on PC', '${(pcShare * 100).round()}%', 'the rest on your phone'),
-            ]),
-            const SizedBox(height: 12),
-            Wrap(spacing: 10, runSpacing: 10, children: [
-              card('Books finished per month', Bars(values: monthBooks, labels: [for (final m in months) mn[m.month - 1]], height: 160)),
-              card('Pages read per month', Bars(values: monthPages, labels: [for (final m in months) mn[m.month - 1]], height: 160)),
-              card('Hours reading per month', Bars(values: monthHours, labels: [for (final m in months) mn[m.month - 1]], height: 160, decimals: 1)),
-              card('Reading days, last 26 weeks', SingleChildScrollView(scrollDirection: Axis.horizontal, reverse: true, child: Heatmap(dayPages: dayPages, today: today))),
-              card('When you read (minutes by hour of day)',
-                  Bars(values: hours, labels: [for (var h = 0; h < 24; h++) h % 3 == 0 ? '$h' : ''], height: 140)),
-              card('Ratings', Bars(values: ratingDist, labels: [for (var i = 1; i <= 10; i++) (i / 2).toString().replaceAll('.0', '')], height: 140)),
-              card(
-                  'Most read authors',
-                  Column(children: [
-                    for (final e in topArtists.take(8)) _rankRow(e.key, '${e.value} books', e.value / max(1, topArtists.first.value)),
-                    if (topArtists.isEmpty) Text('Nothing finished yet.', style: ts(c: tk.faint)),
-                  ])),
-              card(
-                  'Most read series',
-                  Column(children: [
-                    for (final e in topSeries.take(8)) _rankRow(e.key, '${e.value} volumes', e.value / max(1, topSeries.first.value)),
-                    if (topSeries.isEmpty) Text('No series finished yet.', style: ts(c: tk.faint)),
-                  ])),
-              card(
-                  'Most re-read',
-                  Column(children: [
-                    for (final t in reread.take(8)) _rankRow('${t.any.cardTitle} ${t.any.volumeText}'.trim(), '×${t.readCount}', t.readCount / max(1, reread.first.readCount)),
-                    if (reread.isEmpty) Text('Nothing read twice yet.', style: ts(c: tk.faint)),
-                  ])),
-              card(
-                  'Best rated authors (2+ rated books)',
-                  Column(children: [
-                    for (final e in bestArtists.take(8))
-                      _rankRow(e.key, (e.value.reduce((a, b) => a + b) / e.value.length).toStringAsFixed(2),
-                          (e.value.reduce((a, b) => a + b) / e.value.length) / 5),
-                    if (bestArtists.isEmpty) Text('Rate a few more books to see this.', style: ts(c: tk.faint)),
-                  ])),
-            ]),
-          ]),
-        ),
-      ]),
+        const mn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text('Stats', style: ts(size: 15, w: FontWeight.w700)),
+                  const SizedBox(width: 10),
+                  if (!isPhone)
+                    Expanded(
+                      child: Text('How much you read, when, and what.', style: ts(c: tk.sec)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  SizedBox(
+                    width: segW,
+                    child: Seg<Tri>(
+                      value: kind,
+                      items: const [(Tri.any, 'Everything'), (Tri.yes, 'Light novels'), (Tri.no, 'Books')],
+                      onChanged: (v) => setState(() => kind = v),
+                    ),
+                  ),
+                  SizedBox(
+                    width: segW,
+                    child: Seg<String>(
+                      value: period,
+                      items: const [('all', 'All time'), ('year', 'This year'), ('month', 'This month'), ('30', 'Last 30 days')],
+                      onChanged: (v) => setState(() => period = v),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: ListView(
+                  children: [
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        tile('Finished', '${completedIds.length}', 'different books'),
+                        tile('Total reads', '${comps.length}', 'including re-reads'),
+                        tile('Pages read', '$pagesRead', '1 page = 1,500 letters'),
+                        tile('Time reading', humanHours(secs)),
+                        tile('Reading speed', speed == 0 ? '–' : '$speed', 'pages an hour'),
+                        tile('Series read from', '${seriesDone.length}'),
+                        tile('Books started', '$started', 'of ${titles.length} in the library'),
+                        tile('Unread', '${titles.where((t) => !t.isRead).length}'),
+                        tile('In progress', '${titles.where((t) => t.inProgress).length}'),
+                        tile('Favourites', '${titles.where((t) => t.favourite).length}'),
+                        tile('Average rating', avgRating == 0 ? '–' : avgRating.toStringAsFixed(2), '${rated.length} rated'),
+                        tile(
+                          'Library size',
+                          humanSize(titles.fold<int>(0, (a, t) => a + t.any.size)),
+                          'about ${titles.fold<int>(0, (a, t) => a + t.length)} pages',
+                        ),
+                        tile('Authors', '${artists.length}'),
+                        tile('Streak', '$current ${current == 1 ? 'day' : 'days'}', 'longest: $longest ${longest == 1 ? 'day' : 'days'}'),
+                        tile('Average session', humanHours(avgSession)),
+                        tile('Read on PC', '${(pcShare * 100).round()}%', 'the rest on your phone'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        card(
+                          'Books finished per month',
+                          Bars(values: monthBooks, labels: [for (final m in months) mn[m.month - 1]], height: 160),
+                        ),
+                        card(
+                          'Pages read per month',
+                          Bars(values: monthPages, labels: [for (final m in months) mn[m.month - 1]], height: 160),
+                        ),
+                        card(
+                          'Hours reading per month',
+                          Bars(values: monthHours, labels: [for (final m in months) mn[m.month - 1]], height: 160, decimals: 1),
+                        ),
+                        card(
+                          'Reading days, last 26 weeks',
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            reverse: true,
+                            child: Heatmap(dayPages: dayPages, today: today),
+                          ),
+                        ),
+                        card(
+                          'When you read (minutes by hour of day)',
+                          Bars(values: hours, labels: [for (var h = 0; h < 24; h++) h % 3 == 0 ? '$h' : ''], height: 140),
+                        ),
+                        card(
+                          'Ratings',
+                          Bars(
+                            values: ratingDist,
+                            labels: [for (var i = 1; i <= 10; i++) (i / 2).toString().replaceAll('.0', '')],
+                            height: 140,
+                          ),
+                        ),
+                        card(
+                          'Most read authors',
+                          Column(
+                            children: [
+                              for (final e in topArtists.take(8))
+                                _rankRow(e.key, '${e.value} books', e.value / max(1, topArtists.first.value)),
+                              if (topArtists.isEmpty) Text('Nothing finished yet.', style: ts(c: tk.faint)),
+                            ],
+                          ),
+                        ),
+                        card(
+                          'Most read series',
+                          Column(
+                            children: [
+                              for (final e in topSeries.take(8))
+                                _rankRow(e.key, '${e.value} volumes', e.value / max(1, topSeries.first.value)),
+                              if (topSeries.isEmpty) Text('No series finished yet.', style: ts(c: tk.faint)),
+                            ],
+                          ),
+                        ),
+                        card(
+                          'Most re-read',
+                          Column(
+                            children: [
+                              for (final t in reread.take(8))
+                                _rankRow(
+                                  '${t.any.cardTitle} ${t.any.volumeText}'.trim(),
+                                  '×${t.readCount}',
+                                  t.readCount / max(1, reread.first.readCount),
+                                ),
+                              if (reread.isEmpty) Text('Nothing read twice yet.', style: ts(c: tk.faint)),
+                            ],
+                          ),
+                        ),
+                        card(
+                          'Best rated authors (2+ rated books)',
+                          Column(
+                            children: [
+                              for (final e in bestArtists.take(8))
+                                _rankRow(
+                                  e.key,
+                                  (e.value.reduce((a, b) => a + b) / e.value.length).toStringAsFixed(2),
+                                  (e.value.reduce((a, b) => a + b) / e.value.length) / 5,
+                                ),
+                              if (bestArtists.isEmpty) Text('Rate a few more books to see this.', style: ts(c: tk.faint)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
   Widget _rankRow(String name, String value, double frac) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Row(children: [
-          SizedBox(width: isPhone ? 130 : 220, child: Text(name, style: ts(), overflow: TextOverflow.ellipsis)),
-          Expanded(child: Progress(value: frac, height: 6)),
-          SizedBox(width: 80, child: Text(value, textAlign: TextAlign.right, style: ts(c: tk.sec, tab: true))),
-        ]),
-      );
+    padding: const EdgeInsets.symmetric(vertical: 3),
+    child: Row(
+      children: [
+        SizedBox(
+          width: isPhone ? 120 : 200,
+          child: Text(name, style: ts(), overflow: TextOverflow.ellipsis),
+        ),
+        Expanded(child: Progress(value: frac, height: 6)),
+        SizedBox(
+          width: 70,
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: ts(c: tk.sec, tab: true),
+          ),
+        ),
+      ],
+    ),
+  );
 }
 
 class Bars extends StatelessWidget {
@@ -253,25 +382,34 @@ class Bars extends StatelessWidget {
     final top = values.isEmpty ? 1.0 : max(1.0, values.reduce(max));
     return SizedBox(
       height: height + 34,
-      child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-        for (var i = 0; i < values.length; i++)
-          Expanded(
-            child: Tooltip(
-              message: '${labels[i].isEmpty ? i : labels[i]}: ${values[i].toStringAsFixed(decimals)}',
-              child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
-                if (values[i] > 0 && values.length <= 12)
-                  Text(values[i].toStringAsFixed(decimals), style: ts(size: 10.5, c: tk.faint, tab: true)),
-                Container(
-                  height: max(values[i] > 0 ? 2.0 : 0.0, values[i] / top * height),
-                  margin: const EdgeInsets.symmetric(horizontal: 2),
-                  decoration: BoxDecoration(gradient: lk.grad, borderRadius: const BorderRadius.vertical(top: Radius.circular(3))),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          for (var i = 0; i < values.length; i++)
+            Expanded(
+              child: Tooltip(
+                message: '${labels[i].isEmpty ? i : labels[i]}: ${values[i].toStringAsFixed(decimals)}',
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    if (values[i] > 0 && values.length <= 12)
+                      Text(values[i].toStringAsFixed(decimals), style: ts(size: 10.5, c: tk.faint, tab: true)),
+                    Container(
+                      height: max(values[i] > 0 ? 2.0 : 0.0, values[i] / top * height),
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: BoxDecoration(
+                        gradient: lk.grad,
+                        borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(labels[i], style: ts(size: 10.5, c: tk.faint)),
+                  ],
                 ),
-                const SizedBox(height: 4),
-                Text(labels[i], style: ts(size: 10.5, c: tk.faint)),
-              ]),
+              ),
             ),
-          ),
-      ]),
+        ],
+      ),
     );
   }
 }
@@ -288,28 +426,34 @@ class Heatmap extends StatelessWidget {
     final endOfWeek = today + (7 - todayDate.weekday);
     return SizedBox(
       height: 7 * 16.0,
-      child: Row(children: [
-        for (var w = weeks - 1; w >= 0; w--)
-          Column(children: [
-            for (var d = 6; d >= 0; d--)
-              () {
-                final day = endOfWeek - w * 7 - d;
-                final v = dayPages[day] ?? 0;
-                return Tooltip(
-                  message: '${dateText(day * 86400)}: $v pages',
-                  child: Container(
-                    width: 13,
-                    height: 13,
-                    margin: const EdgeInsets.all(1.5),
-                    decoration: BoxDecoration(
-                      color: day > today ? Colors.transparent : (v == 0 ? tk.raised2 : Color.lerp(tk.raised2, lk.acc, 0.3 + 0.7 * v / top)),
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                );
-              }(),
-          ]),
-      ]),
+      child: Row(
+        children: [
+          for (var w = weeks - 1; w >= 0; w--)
+            Column(
+              children: [
+                for (var d = 6; d >= 0; d--)
+                  () {
+                    final day = endOfWeek - w * 7 - d;
+                    final v = dayPages[day] ?? 0;
+                    return Tooltip(
+                      message: '${dateText(day * 86400)}: $v pages',
+                      child: Container(
+                        width: 13,
+                        height: 13,
+                        margin: const EdgeInsets.all(1.5),
+                        decoration: BoxDecoration(
+                          color: day > today
+                              ? Colors.transparent
+                              : (v == 0 ? tk.raised2 : Color.lerp(tk.raised2, lk.acc, 0.3 + 0.7 * v / top)),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    );
+                  }(),
+              ],
+            ),
+        ],
+      ),
     );
   }
 }

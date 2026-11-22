@@ -116,8 +116,9 @@ class _BtnState extends State<Btn> {
 }
 
 class IconBtn extends StatelessWidget {
-  const IconBtn(this.icon, {super.key, this.onTap, this.tooltip, this.active = false, this.color, this.size = 16});
+  const IconBtn(this.icon, {super.key, this.onTap, this.tooltip, this.active = false, this.color, this.size = 16, this.box});
   final IconData icon;
+  final double? box;
   final VoidCallback? onTap;
   final String? tooltip;
   final bool active;
@@ -133,8 +134,8 @@ class IconBtn extends StatelessWidget {
           child: MouseRegion(
             cursor: onTap == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
             child: Container(
-              width: lk.hControl,
-              height: lk.hControl,
+              width: box ?? lk.hControl,
+              height: box ?? lk.hControl,
               decoration: BoxDecoration(
                 color: active ? lk.tint(tk.raised, 0.2) : (h ? tk.raised2 : null),
                 borderRadius: BorderRadius.circular(lk.rControl),
@@ -175,40 +176,60 @@ class Seg<T> extends StatelessWidget {
   final T value;
   final List<(T, String)> items;
   final ValueChanged<T> onChanged;
+
+  TextStyle _style(bool on) => ts(w: FontWeight.w600, c: on ? lk.onAcc : tk.sec, size: lk.fontSize - 1);
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: lk.hControl,
-      padding: const EdgeInsets.all(2),
-      decoration: BoxDecoration(
-        color: tk.field,
-        borderRadius: BorderRadius.circular(lk.rControl),
-        border: Border.all(color: tk.line),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final it in items)
-            GestureDetector(
-              onTap: () => onChanged(it.$1),
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: it.$1 == value ? tk.raised2 : null,
-                    borderRadius: BorderRadius.circular(lk.rControl - 1),
-                  ),
-                  child: Text(
-                    it.$2,
-                    style: ts(w: FontWeight.w600, c: it.$1 == value ? tk.text : tk.sec, size: lk.fontSize - 1),
-                  ),
+    // When there isn't room for every label at full size (a phone, a narrow
+    // panel), the segments share the width and their labels shrink to fit.
+    return LayoutBuilder(
+      builder: (context, box) {
+        var natural = 6.0;
+        for (final it in items) {
+          final tp = TextPainter(text: TextSpan(text: it.$2, style: _style(false)), textDirection: TextDirection.ltr, maxLines: 1)..layout();
+          natural += tp.width + 20;
+        }
+        final squeeze = box.hasBoundedWidth && natural > box.maxWidth;
+        final spread = squeeze || (box.hasBoundedWidth && box.minWidth >= box.maxWidth);
+        Widget item((T, String) it) {
+          final on = it.$1 == value;
+          final label = Text(it.$2, maxLines: 1, style: _style(on));
+          return GestureDetector(
+            onTap: () => onChanged(it.$1),
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: spread ? 4 : 10),
+                alignment: Alignment.center,
+                // The chosen one carries the accent gradient (the logo's colours).
+                decoration: BoxDecoration(
+                  gradient: on ? lk.grad : null,
+                  borderRadius: BorderRadius.circular(lk.rControl - 1),
                 ),
+                child: spread ? FittedBox(fit: BoxFit.scaleDown, child: label) : label,
               ),
             ),
-        ],
-      ),
+          );
+        }
+
+        return Container(
+          height: lk.hControl,
+          width: spread ? box.maxWidth : null,
+          padding: const EdgeInsets.all(2),
+          decoration: BoxDecoration(
+            color: tk.field,
+            borderRadius: BorderRadius.circular(lk.rControl),
+            border: Border.all(color: tk.line),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final it in items) spread ? Expanded(child: item(it)) : item(it),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -319,6 +340,26 @@ class Field extends StatelessWidget {
     );
   }
 }
+
+/// An icon painted with the accent gradient (the logo's colours).
+class GradIcon extends StatelessWidget {
+  const GradIcon(this.icon, {super.key, this.size = 20});
+  final IconData icon;
+  final double size;
+  @override
+  Widget build(BuildContext context) => ShaderMask(
+    blendMode: BlendMode.srcIn,
+    shaderCallback: (r) => lk.grad.createShader(r),
+    child: Icon(icon, size: size, color: Colors.white),
+  );
+}
+
+/// A faint wash of the accent gradient, behind something chosen (a tab, a rail item).
+Gradient softGrad([double a = 0.22]) => LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [for (final c in Look.I.accent) c.withValues(alpha: a)],
+);
 
 /// A number with − and + either side (no slider). Holding a button repeats it;
 /// tapping the number lets you type an exact value.

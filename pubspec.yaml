@@ -2,7 +2,7 @@ name: sable
 description: "Sable: a library and reader for books and light novels."
 publish_to: 'none'
 
-version: 1.4.1+10
+version: 1.4.2+11
 
 environment:
   sdk: ^3.14.0

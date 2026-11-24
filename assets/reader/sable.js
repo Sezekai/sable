@@ -256,6 +256,7 @@ body, body * { margin-top: 0 !important; padding-top: 0 !important; }
 html, body { margin-top: 0 !important; padding-top: 0 !important; }
 h1, h2, h3, h4, h5, h6 { margin-bottom: 0.6em !important; }
 .sable-empty { display: none !important; }` : ''}
+html.sable-restyle * { outline-color: transparent; }
 img, svg, image { cursor: zoom-in; }
 img.sable-fit {
     display: block !important;
@@ -325,7 +326,21 @@ const applyStyle = () => {
     refitImages()
     applyLayout()
     view?.renderer?.setStyles?.(bookCSS())
-    for (const c of view?.renderer?.getContents?.() ?? []) if (c.doc) calibrate(c.doc)
+    for (const c of view?.renderer?.getContents?.() ?? []) if (c.doc) { calibrate(c.doc); restyle(c.doc) }
+}
+
+// After a change, every element is styled and drawn again (WebView2 could
+// keep the old colour on the first line of each paragraph).
+const restyle = doc => {
+    const h = doc?.documentElement
+    if (!h) return
+    h.classList.add('sable-restyle')
+    h.style.setProperty('opacity', '0.999')
+    void doc.body?.offsetHeight
+    requestAnimationFrame(() => {
+        h.classList.remove('sable-restyle')
+        h.style.removeProperty('opacity')
+    })
 }
 
 // ---------- clicks, keys and the wheel ----------

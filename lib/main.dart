@@ -770,6 +770,10 @@ Future<void> _runPhoneSelftest(SemanticsHandle semantics) async {
       final r = ReaderControl.active;
       check(r != null && r.ready, 'the downloaded PDF opened');
       if (r != null) {
+        // From the first page (the PC's own test may have left it near the end,
+        // and reaching the end would count a finish).
+        r.goFraction(0);
+        await Future<void>.delayed(const Duration(milliseconds: 600));
         r.next();
         await Future<void>.delayed(const Duration(milliseconds: 600));
         r.togglePinned();

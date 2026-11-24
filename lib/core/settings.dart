@@ -71,8 +71,25 @@ class ReadingStyle {
   bool clearNotch = true;
   bool clearStatus = true;
 
-  /// Scroll mode: how far one notch of the mouse wheel moves (px).
-  double scrollStep = 140;
+  /// One page (and scrolling) on the PC: how much of the window's width it takes (%).
+  double pageWidth = 70;
+
+  /// Scroll mode: keep the top and bottom margins.
+  bool scrollTop = true;
+  bool scrollBottom = true;
+
+  /// The "Text and spacing" options; the rest are the reader's Settings.
+  static const textKeys = ['font', 'size', 'spacing', 'wordSpacing', 'paraSpacing', 'marginXPct', 'marginYPct', 'indent', 'publisherStyles'];
+
+  ReadingStyle copy() => ReadingStyle()..apply(toJson());
+
+  /// Takes these options (or all but these, with [except]) from [from].
+  void take(ReadingStyle from, List<String> keys, {bool except = false}) {
+    final m = from.toJson();
+    apply({for (final e in m.entries) if (keys.contains(e.key) != except) e.key: e.value});
+  }
+
+  bool same(ReadingStyle o) => jsonEncode(toJson()) == jsonEncode(o.toJson());
 
   bool get justify => align == 'justify';
 
@@ -94,7 +111,9 @@ class ReadingStyle {
     'animate': animate,
     'clearNotch': clearNotch,
     'clearStatus': clearStatus,
-    'scrollStep': scrollStep,
+    'pageWidth': pageWidth,
+    'scrollTop': scrollTop,
+    'scrollBottom': scrollBottom,
   };
 
   static double _half(num v) => (v * 2).round() / 2;
@@ -136,7 +155,9 @@ class ReadingStyle {
     animate = m['animate'] as bool? ?? animate;
     clearNotch = m['clearNotch'] as bool? ?? clearNotch;
     clearStatus = m['clearStatus'] as bool? ?? clearStatus;
-    scrollStep = ((m['scrollStep'] as num?)?.toDouble() ?? scrollStep).clamp(40, 600);
+    pageWidth = (pick('pageWidth', pageWidth).clamp(20, 100) / 5).round() * 5.0;
+    scrollTop = m['scrollTop'] as bool? ?? scrollTop;
+    scrollBottom = m['scrollBottom'] as bool? ?? scrollBottom;
   }
 }
 

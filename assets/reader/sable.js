@@ -230,7 +230,7 @@ const bookCSS = () => {
     const fam = fontStack(style.font)
     const own = style.publisherStyles
     const fg = style.textColor || theme.fg
-    return `
+    return `/*sable*/
 @namespace epub "http://www.idpf.org/2007/ops";
 ${fontFaces()}
 html { color-scheme: dark; color: ${fg} !important; background: transparent !important; }
@@ -293,7 +293,9 @@ const applyLayout = () => {
     const w = window.innerWidth
     r.setAttribute('flow', style.flow === 'scrolled' ? 'scrolled' : 'paginated')
     r.setAttribute('max-column-count', String(cols))
-    r.setAttribute('max-inline-size', cols === 2 ? `${Math.max(320, Math.floor(w / 2))}px` : `${Math.max(420, Math.min(1100, w))}px`)
+    // One page (or scrolling) takes the chosen share of the window.
+    const pw = Math.max(20, Math.min(100, num(style.pageWidth, 100)))
+    r.setAttribute('max-inline-size', cols === 2 ? `${Math.max(320, Math.floor(w / 2))}px` : `${Math.max(320, Math.round(w * pw / 100))}px`)
     // Margins are a share of the window: left and right (also the gap between
     // two pages), and top and bottom. Each page keeps at least ~260px of text.
     const h = window.innerHeight
@@ -312,8 +314,8 @@ const applyLayout = () => {
     view.style.right = '0'
     view.style.width = 'auto'
     view.style.height = 'auto'
-    view.style.top = `${top + (scrolled ? myPx : 0)}px`
-    view.style.bottom = `${bottom + (scrolled ? myPx : 0)}px`
+    view.style.top = `${top + (scrolled && style.scrollTop !== false ? myPx : 0)}px`
+    view.style.bottom = `${bottom + (scrolled && style.scrollBottom !== false ? myPx : 0)}px`
     r.setAttribute('margin', `${scrolled ? 0 : myPx}px`)
     if (style.animate) r.setAttribute('animated', '')
     else r.removeAttribute('animated')
@@ -323,6 +325,7 @@ const applyStyle = () => {
     refitImages()
     applyLayout()
     view?.renderer?.setStyles?.(bookCSS())
+    for (const c of view?.renderer?.getContents?.() ?? []) if (c.doc) calibrate(c.doc)
 }
 
 // ---------- clicks, keys and the wheel ----------
@@ -393,7 +396,7 @@ const onKey = e => {
 // The mouse wheel: in page mode, one page per notch (small trackpad moves add up
 // first); in scroll mode, a smooth eased scroll of a set distance per notch.
 let wheelAcc = 0, wheelLock = 0
-let scrollTarget = 0, scrollAnim = 0
+let scrollAnim = 0
 const onWheel = e => {
     if ($('#lightbox').classList.contains('show') || e.ctrlKey) return
     const dy = e.deltaMode === 1 ? e.deltaY * 40 : e.deltaMode === 2 ? e.deltaY * window.innerHeight : e.deltaY
@@ -413,31 +416,42 @@ const onWheel = e => {
     }
 }
 
+// Scroll mode: the wheel adds to a distance still to go, which eases out
+// frame by frame. At the top or bottom of a part of the book, a further push
+// goes on to the next or previous part.
+let scrollLeft = 0, edgePush = 0, edgeTimer = 0, lastFrame = 0
 const smoothScroll = d => {
     const r = view?.renderer
-    if (!r) return
-    // A notch (about 100) moves the chosen distance; trackpads move in proportion.
-    scrollTarget += d * (style.scrollStep ?? 140) / 100
-    if (scrollAnim) return
-    let last = 0
-    const tick = now => {
-        const dt = last ? Math.max(4, Math.min(48, now - last)) : 16
-        last = now
-        if (Math.abs(scrollTarget) < 0.5) { scrollAnim = 0; scrollTarget = 0; return }
-        const move = scrollTarget * Math.min(1, dt / 90)
-        const down = move > 0
-        // At the top or bottom of this part of the book: go on to the next or previous one.
-        if (down ? r.viewSize - r.end <= 2 : r.start <= 0) {
-            scrollTarget = 0
-            scrollAnim = 0
-            down ? view.next() : view.prev()
-            return
+    if (!r?.freeScroll) return
+    const edge = r.scrollEdge
+    const dir = Math.sign(d)
+    if (!scrollAnim && (edge === 2 || edge === dir)) {
+        edgePush += d
+        clearTimeout(edgeTimer)
+        edgeTimer = setTimeout(() => { edgePush = 0 }, 500)
+        if (Math.abs(edgePush) >= 160) {
+            edgePush = 0
+            scrollLeft = 0
+            dir > 0 ? view.next() : view.prev()
         }
-        r.scrollBy(move, move)
-        scrollTarget -= move
-        scrollAnim = requestAnimationFrame(tick)
+        return
     }
-    scrollAnim = requestAnimationFrame(tick)
+    edgePush = 0
+    if (Math.sign(scrollLeft) !== dir) scrollLeft = 0
+    const h = window.innerHeight
+    scrollLeft = Math.max(-h * 2, Math.min(h * 2, scrollLeft + d * 1.1))
+    if (!scrollAnim) { lastFrame = 0; scrollAnim = requestAnimationFrame(scrollTick) }
+}
+const scrollTick = now => {
+    const r = view?.renderer
+    const dt = lastFrame ? Math.max(4, Math.min(40, now - lastFrame)) : 16
+    lastFrame = now
+    if (!r || Math.abs(scrollLeft) < 0.6) { scrollLeft = 0; scrollAnim = 0; return }
+    const step = scrollLeft * Math.min(1, dt / 110)
+    const moved = r.freeScroll(Math.abs(step) < 1 ? Math.sign(step) : step)
+    scrollLeft -= step
+    if (moved === 0) { scrollLeft = 0; scrollAnim = 0; return }
+    scrollAnim = requestAnimationFrame(scrollTick)
 }
 
 // Mouse back and forward buttons: the app decides what they do.
@@ -638,7 +652,8 @@ const fixRules = rules => {
 const normalise = doc => {
     try {
         for (const sheet of doc.styleSheets) {
-            if (sheet.ownerNode?.id === 'sable-style') continue
+            // Sable's own styles (its text size is meant to be in px).
+            if (sheet.ownerNode?.id === 'sable-style' || sheet.ownerNode?.textContent?.startsWith('/*sable*/')) continue
             try { fixRules(sheet.cssRules) } catch {}
         }
         for (const el of doc.querySelectorAll('[style]')) {
@@ -654,8 +669,53 @@ const normalise = doc => {
     } catch (e) { post('error', { message: 'normalise: ' + e }) }
 }
 
+// Text size means the same in every book: the size most of the text is
+// drawn at is measured, and the whole page is scaled so it matches the setting
+// (headings and small print keep their proportions). Short parts such as
+// title pages use the scale found in the rest of the book.
+let bookScale = 1, lastCal = null
+const calibrate = doc => {
+    try {
+        const html = doc?.documentElement, body = doc?.body
+        if (!body) return
+        html.style.removeProperty('font-size')
+        body.style.removeProperty('font-size')
+        const win = doc.defaultView
+        const counts = new Map()
+        let total = 0
+        const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT)
+        let n
+        while ((n = walker.nextNode()) && total < 40000) {
+            const len = n.nodeValue.replace(/\s+/g, '').length
+            if (len < 2) continue
+            const el = n.parentElement
+            if (!el || el.closest('h1, h2, h3, h4, h5, h6, sup, sub, rt, .sable-empty')) continue
+            const fs = parseFloat(win.getComputedStyle(el).fontSize)
+            if (!(fs > 0)) continue
+            const k = Math.round(fs * 20) / 20
+            counts.set(k, (counts.get(k) ?? 0) + len)
+            total += len
+        }
+        let scale = bookScale
+        if (total >= 300) {
+            let best = 0, most = 0
+            for (const [k, c] of counts) if (c > most) { most = c; best = k }
+            if (best > 0) scale = Math.max(0.25, Math.min(4, style.size / best))
+            bookScale = scale
+        }
+        lastCal = { total, scale, size: style.size }
+        if (Math.abs(scale - 1) < 0.005) return
+        const px = `${(style.size * scale).toFixed(3)}px`
+        html.style.setProperty('font-size', px, 'important')
+        body.style.setProperty('font-size', px, 'important')
+    } catch (e) { post('error', { message: 'calibrate: ' + e }) }
+}
+
 const onLoad = ({ detail: { doc } }) => {
     normalise(doc)
+    calibrate(doc)
+    // Measured again once it's on screen (a hidden frame can report other sizes).
+    requestAnimationFrame(() => calibrate(doc))
     doc.addEventListener('click', onDocClick)
     doc.addEventListener('keydown', onKey)
     doc.addEventListener('wheel', onWheel, { passive: false })
@@ -724,6 +784,8 @@ window.sable = {
     setMenu: open => { menuOpen = !!open },
     setTyping: on => { typing = !!on },
     setCursor,
+    // For the self-test: the size the main text is drawn at, and where we are.
+    probe: () => { const d0 = 0; const d = view?.renderer?.getContents?.()[0]?.doc; const p = d?.querySelector('p:not(.sable-empty)'); return { size: p ? parseFloat(d.defaultView.getComputedStyle(p).fontSize) : 0, index: view?.renderer?.getContents?.()[0]?.index ?? -1, edge: view?.renderer?.scrollEdge, start: view?.renderer?.start, cal: lastCal } },
     async search(q) {
         const run = ++searchRun
         view.clearSearch()

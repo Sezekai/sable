@@ -39,6 +39,9 @@ class Nav extends ChangeNotifier {
   DateTime _keysAt = DateTime(0);
   bool fullScreen = false;
   bool readerOpen = false;
+
+  /// Started with a book file: the library stays out of sight until the reader is up.
+  bool booting = false;
   final FocusNode searchFocus = FocusNode();
 
   // Where you've been, for the mouse's back and forward buttons.
@@ -322,6 +325,12 @@ class _ShellState extends State<Shell> {
   @override
   Widget build(BuildContext context) {
     if (isPhone) return const PhoneShell();
+    if (Nav.I.booting) {
+      return ListenableBuilder(
+        listenable: Nav.I,
+        builder: (context, _) => Nav.I.booting ? ColoredBox(color: Look.I.t.pageBg) : const Shell(),
+      );
+    }
     return Focus(
       focusNode: _focus,
       autofocus: true,

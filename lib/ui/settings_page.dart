@@ -102,19 +102,19 @@ class _SettingsPageState extends State<SettingsPage> {
                     const PhoneConnection(),
                   ]),
                 if (!isPhone)
-                  _group('Phone', 'Read on your Android phone too: it keeps the whole library and syncs reading, history, favourites, ratings, tags and bookmarks with this PC over your home WiFi.', [
-                    const _PcPhone(),
-                  ]),
+                  _group(
+                    'Phone',
+                    'Read on your Android phone too: it keeps the whole library and syncs reading, history, favourites, ratings, tags and bookmarks with this PC over your home WiFi.',
+                    [const _PcPhone()],
+                  ),
                 if (!isPhone)
-                _group(
-                  'Library folders',
-                  'Where your books are. Light novel folders treat each folder inside as a series. Collections can be hidden from the library in one click.',
-                  [..._folders()],
-                ),
-                _group('Look', 'Each theme can be changed and keeps your changes. The book page follows the theme too.', [
-                  ..._look(),
-                ]),
-                _group('Reader', 'Reading settings can also be changed while reading (the Settings button at the top, or S).', [
+                  _group(
+                    'Library folders',
+                    'Where your books are. Light novel folders treat each folder inside as a series. Collections can be hidden from the library in one click.',
+                    [..._folders()],
+                  ),
+                _group('Look', 'Each theme can be changed and keeps your changes. The book page follows the theme too.', [..._look()]),
+                _group('Reader', 'The default for every book. A change made while reading is kept for that book only; use "Save as default for all books" in the reader to make it the default.', [
                   _row(
                     'Font',
                     Drop<String>(
@@ -169,40 +169,22 @@ class _SettingsPageState extends State<SettingsPage> {
                     },
                   ),
                   if (!isPhone)
-                  _row(
-                    'Scroll distance',
-                    _slider(
-                      Settings.I.style.scrollStep,
-                      40,
-                      600,
-                      '${Settings.I.style.scrollStep.round()} px for each notch of the wheel',
-                      (v) {
-                        Settings.I.style.scrollStep = v;
-                      },
-                    ),
-                    changed: Settings.I.style.scrollStep != _d.style.scrollStep,
-                    reset: () {
-                      Settings.I.style.scrollStep = _d.style.scrollStep;
-                      Settings.I.save();
-                    },
-                  ),
-                  if (!isPhone)
-                  _row(
-                    'Mouse back / forward',
-                    Seg<String>(
-                      value: Settings.I.mouseInReader,
-                      items: const [('pages', 'Turn pages'), ('leave', 'Back leaves the book')],
-                      onChanged: (v) {
-                        Settings.I.mouseInReader = v;
+                    _row(
+                      'Mouse back / forward',
+                      Seg<String>(
+                        value: Settings.I.mouseInReader,
+                        items: const [('pages', 'Turn pages'), ('leave', 'Back leaves the book')],
+                        onChanged: (v) {
+                          Settings.I.mouseInReader = v;
+                          Settings.I.save();
+                        },
+                      ),
+                      changed: Settings.I.mouseInReader != _d.mouseInReader,
+                      reset: () {
+                        Settings.I.mouseInReader = _d.mouseInReader;
                         Settings.I.save();
                       },
                     ),
-                    changed: Settings.I.mouseInReader != _d.mouseInReader,
-                    reset: () {
-                      Settings.I.mouseInReader = _d.mouseInReader;
-                      Settings.I.save();
-                    },
-                  ),
                   _check(
                     'Skip volumes already read when moving to the next volume',
                     Settings.I.skipRead,
@@ -290,70 +272,70 @@ class _SettingsPageState extends State<SettingsPage> {
                     Library.I.changed();
                   }, def: _d.showCollections),
                   if (!isPhone) ...[
-                  _check('Watch the folders and add new books by themselves', Settings.I.watchFolders, (v) {
-                    Settings.I.watchFolders = v;
-                    Library.I.startWatching();
-                  }, def: _d.watchFolders),
-                  const SizedBox(height: 8),
-                  Text('ZIP passwords', style: ts(w: FontWeight.w600)),
-                  Text(
-                    'Locked ZIPs are opened with these, and with any password in a .txt file with "password" in its name in a library folder '
-                    '(like "Password for many rars.txt"). The ZIPs themselves aren\'t changed.',
-                    style: ts(c: tk.sec, size: 12),
-                  ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      for (final pw in Settings.I.zipPasswords)
-                        TagChip(
-                          '•' * pw.length.clamp(4, 12),
-                          tk.sec,
-                          onRemove: () {
-                            Settings.I.zipPasswords.remove(pw);
+                    _check('Watch the folders and add new books by themselves', Settings.I.watchFolders, (v) {
+                      Settings.I.watchFolders = v;
+                      Library.I.startWatching();
+                    }, def: _d.watchFolders),
+                    const SizedBox(height: 8),
+                    Text('ZIP passwords', style: ts(w: FontWeight.w600)),
+                    Text(
+                      'Locked ZIPs are opened with these, and with any password in a .txt file with "password" in its name in a library folder '
+                      '(like "Password for many rars.txt"). The ZIPs themselves aren\'t changed.',
+                      style: ts(c: tk.sec, size: 12),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        for (final pw in Settings.I.zipPasswords)
+                          TagChip(
+                            '•' * pw.length.clamp(4, 12),
+                            tk.sec,
+                            onRemove: () {
+                              Settings.I.zipPasswords.remove(pw);
+                              Settings.I.save();
+                            },
+                          ),
+                        Btn(
+                          'Add a password…',
+                          icon: Icons.key_outlined,
+                          dense: true,
+                          onTap: () async {
+                            final pw = await ask(
+                              context,
+                              'Add a ZIP password',
+                              body: 'Sable tries it on locked ZIPs at the next scan, which starts now.',
+                              confirmLabel: 'Add',
+                            );
+                            if (pw == null || pw.isEmpty) return;
+                            Settings.I.zipPasswords.add(pw);
                             Settings.I.save();
+                            Library.I.scan();
                           },
                         ),
-                      Btn(
-                        'Add a password…',
-                        icon: Icons.key_outlined,
-                        dense: true,
-                        onTap: () async {
-                          final pw = await ask(
-                            context,
-                            'Add a ZIP password',
-                            body: 'Sable tries it on locked ZIPs at the next scan, which starts now.',
-                            confirmLabel: 'Add',
-                          );
-                          if (pw == null || pw.isEmpty) return;
-                          Settings.I.zipPasswords.add(pw);
-                          Settings.I.save();
-                          Library.I.scan();
-                        },
-                      ),
-                      Text('${Library.I.zipPasswords.length} passwords in use', style: ts(c: tk.faint, size: 12)),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: [
-                      Btn('Scan the library', icon: Icons.refresh, onTap: Library.I.scan),
-                      Btn(
-                        'Read file names again',
-                        icon: Icons.text_fields,
-                        tooltip: 'Applies the series and volume rules again. Your edits are kept.',
-                        onTap: () {
-                          Library.I.reapplyFolders();
-                          toast('File names read again');
-                        },
-                      ),
-                      Btn('Make missing covers', icon: Icons.image_outlined, onTap: Covers.I.queueMissing),
-                    ],
-                  ),
+                        Text('${Library.I.zipPasswords.length} passwords in use', style: ts(c: tk.faint, size: 12)),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        Btn('Scan the library', icon: Icons.refresh, onTap: Library.I.scan),
+                        Btn(
+                          'Read file names again',
+                          icon: Icons.text_fields,
+                          tooltip: 'Applies the series and volume rules again. Your edits are kept.',
+                          onTap: () {
+                            Library.I.reapplyFolders();
+                            toast('File names read again');
+                          },
+                        ),
+                        Btn('Make missing covers', icon: Icons.image_outlined, onTap: Covers.I.queueMissing),
+                      ],
+                    ),
                   ],
                   Wrap(
                     spacing: 8,
@@ -376,42 +358,58 @@ class _SettingsPageState extends State<SettingsPage> {
                     ],
                   ),
                 ]),
-                _group('Descriptions and covers', 'Books and series without a description can have one looked up online (Google Books, then Open Library). Your own descriptions and covers are never replaced. Edit or change them on each book or series page.', [
-                  Wrap(spacing: 8, runSpacing: 6, crossAxisAlignment: WrapCrossAlignment.center, children: [
-                    Btn('Find missing descriptions', icon: Icons.travel_explore, onTap: () {
-                      final all = Library.I.entries();
-                      Lookup.run(
-                        volumes: Library.I.volumes.values.where((v) => !v.any.missing).toList(),
-                        series: all.whereType<SeriesEntry>().toList(),
-                      );
-                      toast('Looking up descriptions: see the progress in the jobs bar');
-                    }),
-                    Text(
-                      '${Library.I.volumes.values.where((v) => !v.any.missing && v.primary.shownDescription == null).length} books without one',
-                      style: ts(c: tk.faint, size: 12),
+                _group(
+                  'Descriptions and covers',
+                  'Books and series without a description can have one looked up online (Google Books, then Open Library). Your own descriptions and covers are never replaced. Edit or change them on each book or series page.',
+                  [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Btn(
+                          'Find missing descriptions',
+                          icon: Icons.travel_explore,
+                          onTap: () {
+                            final all = Library.I.entries();
+                            Lookup.run(
+                              volumes: Library.I.volumes.values.where((v) => !v.any.missing).toList(),
+                              series: all.whereType<SeriesEntry>().toList(),
+                            );
+                            toast('Looking up descriptions: see the progress in the jobs bar');
+                          },
+                        ),
+                        Text(
+                          '${Library.I.volumes.values.where((v) => !v.any.missing && v.primary.shownDescription == null).length} books without one',
+                          style: ts(c: tk.faint, size: 12),
+                        ),
+                      ],
                     ),
-                  ]),
-                ]),
+                  ],
+                ),
                 if (!isPhone && Platform.isWindows)
-                  _group('Opening ebooks', 'Make Sable the app that opens EPUB, MOBI and AZW3 files when you double-click them. Books outside the library are tracked (history, position) without being added; if you add them later, their progress is already there.', [
-                    const _DefaultApp(),
-                  ]),
+                  _group(
+                    'Opening ebooks',
+                    'Make Sable the app that opens EPUB, MOBI and AZW3 files when you double-click them. Books outside the library are tracked (history, position) without being added; if you add them later, their progress is already there.',
+                    [const _DefaultApp()],
+                  ),
                 if (!isPhone)
-                _group('Storage', 'Everywhere Sable keeps things, and how much space each uses.', [
-                  for (final pl in _places()) _storageRow(pl),
-                ]),
+                  _group('Storage', 'Everywhere Sable keeps things, and how much space each uses.', [
+                    for (final pl in _places()) _storageRow(pl),
+                  ]),
                 if (isPhone)
                   _group('Storage', 'What Sable keeps on this phone.', [
                     ListenableBuilder(
                       listenable: Downloads.I,
-                      builder: (_, _) => Text(
-                          'Downloaded books: ${Downloads.I.done.length} · ${humanSize(Downloads.I.usedBytes)}',
-                          style: ts()),
+                      builder: (_, _) =>
+                          Text('Downloaded books: ${Downloads.I.done.length} · ${humanSize(Downloads.I.usedBytes)}', style: ts()),
                     ),
                     FutureBuilder<int>(
                       future: _dirSize(AppPaths.I.thumbs),
-                      builder: (_, snap) => Text('Covers: ${snap.hasData ? humanSize(snap.data!) : '…'} (kept for the whole library, so it can be browsed away from the PC)',
-                          style: ts(c: tk.sec, size: 12.5)),
+                      builder: (_, snap) => Text(
+                        'Covers: ${snap.hasData ? humanSize(snap.data!) : '…'} (kept for the whole library, so it can be browsed away from the PC)',
+                        style: ts(c: tk.sec, size: 12.5),
+                      ),
                     ),
                     Text('Data: ${AppPaths.I.data}', style: ts(c: tk.faint, size: 12)),
                     Text('Books and covers: ${AppPaths.I.cache}', style: ts(c: tk.faint, size: 12)),
@@ -425,25 +423,33 @@ class _SettingsPageState extends State<SettingsPage> {
                         Settings.I.resetToDefaults();
                       }),
                       if (!isPhone)
-                      _reset('Library', 'Sable forgets every book, with its ratings, favourites, tags, bookmarks and history. Your files stay on disk.', () {
-                        Db.I.resetLibrary();
-                        Library.I.load();
-                      }),
+                        _reset(
+                          'Library',
+                          'Sable forgets every book, with its ratings, favourites, tags, bookmarks and history. Your files stay on disk.',
+                          () {
+                            Db.I.resetLibrary();
+                            Library.I.load();
+                          },
+                        ),
                       if (!isPhone)
-                      _reset('History', 'All reading sessions, read counts and reading positions are cleared. Books, ratings, favourites, tags and bookmarks stay.', () {
-                        Db.I.resetHistory();
-                        Library.I.load();
-                      }),
-                      _reset('Look', 'Both themes lose your colour changes, the accents and sizes go back to their defaults, and OLED black is chosen.', () {
-                        Look.I.resetToDefault();
-                      }),
+                        _reset('History', 'All reading sessions, read counts and reading positions are cleared. Books, ratings, favourites, tags and bookmarks stay.', () {
+                          Db.I.resetHistory();
+                          Library.I.load();
+                        }),
+                      _reset(
+                        'Look',
+                        'Both themes lose your colour changes, the accents and sizes go back to their defaults, and OLED black is chosen.',
+                        () {
+                          Look.I.resetToDefault();
+                        },
+                      ),
                       _reset('Cover cache', 'Covers are made again when needed.', () async {
                         await _clear(AppPaths.I.thumbs);
                       }),
                       if (!isPhone)
-                      _reset('Book cache', 'Books copied out of ZIPs are removed; they\'re copied again when opened.', () async {
-                        await _clear(AppPaths.I.bookCache);
-                      }),
+                        _reset('Book cache', 'Books copied out of ZIPs are removed; they\'re copied again when opened.', () async {
+                          await _clear(AppPaths.I.bookCache);
+                        }),
                     ],
                   ),
                 ]),
@@ -478,71 +484,104 @@ class _SettingsPageState extends State<SettingsPage> {
     if (isPhone) {
       final open = boxes.where((b) => b.title == section).firstOrNull;
       if (open != null) {
-        return ListView(children: [open]);
+        return Smooth(
+          builder: (sc) => ListView(controller: sc, children: [open]),
+        );
       }
-      return ListView(children: [
-        for (final b in boxes)
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => setState(() => section = b.title),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
-              child: Row(children: [
-                GradIcon(_iconFor(b.title), size: 24),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(b.title, style: ts(size: 15, w: FontWeight.w600)),
-                    Text(b.desc, style: ts(c: tk.faint, size: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  ]),
-                ),
-                Icon(Icons.chevron_right, color: tk.faint),
-              ]),
-            ),
-          ),
-      ]);
-    }
-    final cur = boxes.where((b) => b.title == pcSection).firstOrNull ?? boxes.first;
-    return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      SizedBox(
-        width: 220,
-        child: ListView(children: [
-          for (final b in boxes)
-            Hoverable(
-              builder: (h) => GestureDetector(
-                onTap: () => setState(() => pcSection = b.title),
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 2),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-                    decoration: BoxDecoration(
-                      gradient: b == cur ? softGrad(0.28) : null,
-                      color: b != cur && h ? tk.raised : null,
-                      borderRadius: BorderRadius.circular(lk.rControl),
-                    ),
-                    child: Row(children: [
-                      b == cur ? GradIcon(_iconFor(b.title), size: 18) : Icon(_iconFor(b.title), size: 18, color: tk.sec),
-                      const SizedBox(width: 10),
+      return Smooth(
+        builder: (sc) => ListView(
+          controller: sc,
+          children: [
+            for (final b in boxes)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => section = b.title),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+                  child: Row(
+                    children: [
+                      GradIcon(_iconFor(b.title), size: 24),
+                      const SizedBox(width: 16),
                       Expanded(
-                        child: Text(b.title,
-                            style: ts(w: b == cur ? FontWeight.w700 : FontWeight.w500, c: b == cur ? tk.text : tk.sec),
-                            overflow: TextOverflow.ellipsis),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(b.title, style: ts(size: 15, w: FontWeight.w600)),
+                            Text(
+                              b.desc,
+                              style: ts(c: tk.faint, size: 12),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
                       ),
-                    ]),
+                      Icon(Icons.chevron_right, color: tk.faint),
+                    ],
                   ),
                 ),
               ),
+          ],
+        ),
+      );
+    }
+    final cur = boxes.where((b) => b.title == pcSection).firstOrNull ?? boxes.first;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 220,
+          child: Smooth(
+            builder: (sc) => ListView(
+              controller: sc,
+              children: [
+                for (final b in boxes)
+                  Hoverable(
+                    builder: (h) => GestureDetector(
+                      onTap: () => setState(() => pcSection = b.title),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 2),
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                          decoration: BoxDecoration(
+                            gradient: b == cur ? softGrad(0.28) : null,
+                            color: b != cur && h ? tk.raised : null,
+                            borderRadius: BorderRadius.circular(lk.rControl),
+                          ),
+                          child: Row(
+                            children: [
+                              b == cur ? GradIcon(_iconFor(b.title), size: 18) : Icon(_iconFor(b.title), size: 18, color: tk.sec),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  b.title,
+                                  style: ts(w: b == cur ? FontWeight.w700 : FontWeight.w500, c: b == cur ? tk.text : tk.sec),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
-        ]),
-      ),
-      const SizedBox(width: 12),
-      Expanded(
-        child: ListView(key: ValueKey(cur.title), children: [
-          ConstrainedBox(constraints: const BoxConstraints(maxWidth: 900), child: cur),
-        ]),
-      ),
-    ]);
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Smooth(
+            builder: (sc) => ListView(
+              controller: sc,
+              key: ValueKey(cur.title),
+              children: [ConstrainedBox(constraints: const BoxConstraints(maxWidth: 900), child: cur)],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _group(String title, String desc, List<Widget> children) => _GroupBox(
@@ -590,31 +629,38 @@ class _SettingsPageState extends State<SettingsPage> {
       // A phone: the name above the setting, which gets the whole width.
       ? Padding(
           padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(label, style: ts(c: tk.sec, size: 12.5)),
-            Row(children: [
-              Flexible(child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: child)),
-              const SizedBox(width: 4),
-              _resetBtn(changed, reset),
-            ]),
-          ]),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(label, style: ts(c: tk.sec, size: 12.5)),
+              Row(
+                children: [
+                  Flexible(
+                    child: SingleChildScrollView(scrollDirection: Axis.horizontal, child: child),
+                  ),
+                  const SizedBox(width: 4),
+                  _resetBtn(changed, reset),
+                ],
+              ),
+            ],
+          ),
         )
       : Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Row(
-      children: [
-        SizedBox(
-          width: 180,
-          child: Text(label, style: ts(c: tk.sec)),
-        ),
-        Flexible(
-          child: Align(alignment: Alignment.centerLeft, child: child),
-        ),
-        const SizedBox(width: 6),
-        _resetBtn(changed, reset),
-      ],
-    ),
-  );
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 180,
+                child: Text(label, style: ts(c: tk.sec)),
+              ),
+              Flexible(
+                child: Align(alignment: Alignment.centerLeft, child: child),
+              ),
+              const SizedBox(width: 6),
+              _resetBtn(changed, reset),
+            ],
+          ),
+        );
 
   Widget _check(String label, bool v, ValueChanged<bool> on, {bool? def}) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 1),
@@ -638,37 +684,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   on(def);
                   Settings.I.save();
                 },
-        ),
-      ],
-    ),
-  );
-
-  Widget _slider(
-    double v,
-    double min,
-    double max,
-    String label,
-    void Function(double) set, {
-    int? divisions,
-    VoidCallback? done,
-  }) => SizedBox(
-    width: 420,
-    child: Row(
-      children: [
-        Expanded(
-          child: Slider(
-            value: v.clamp(min, max),
-            min: min,
-            max: max,
-            divisions: divisions,
-            onChanged: (x) => setState(() => set(x)),
-            onChangeEnd: (_) => done != null ? done() : Settings.I.save(),
-          ),
-        ),
-        const SizedBox(width: 10),
-        SizedBox(
-          width: 200,
-          child: Text(label, style: ts(c: tk.faint, size: 12)),
         ),
       ],
     ),
@@ -1027,13 +1042,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'Reset ${part.toLowerCase()}',
       kind: BtnKind.dangerGhost,
       onTap: () async {
-        if (await confirm(
-          context,
-          'Reset ${part.toLowerCase()}?',
-          what,
-          confirmLabel: 'Reset ${part.toLowerCase()}',
-          danger: true,
-        )) {
+        if (await confirm(context, 'Reset ${part.toLowerCase()}?', what, confirmLabel: 'Reset ${part.toLowerCase()}', danger: true)) {
           await run();
           toast('$part reset');
           _measure();
@@ -1124,8 +1133,6 @@ class _GroupBox extends StatelessWidget {
   Widget build(BuildContext context) => child;
 }
 
-
-
 /// Settings → Opening ebooks (Windows): register Sable, then let Windows pick it.
 class _DefaultApp extends StatefulWidget {
   const _DefaultApp();
@@ -1149,16 +1156,20 @@ class _DefaultAppState extends State<_DefaultApp> {
     runSpacing: 6,
     crossAxisAlignment: WrapCrossAlignment.center,
     children: [
-      Btn.primary('Make Sable the default for ebooks', icon: Icons.open_in_new, onTap: () async {
-        final ok = await FileAssoc.register();
-        if (mounted) setState(() => registered = ok);
-        if (!ok) {
-          toast('Couldn\'t register Sable with Windows');
-          return;
-        }
-        toast('In Windows settings, choose Sable for .epub (and .mobi, .azw3)');
-        await FileAssoc.openDefaultApps();
-      }),
+      Btn.primary(
+        'Make Sable the default for ebooks',
+        icon: Icons.open_in_new,
+        onTap: () async {
+          final ok = await FileAssoc.register();
+          if (mounted) setState(() => registered = ok);
+          if (!ok) {
+            toast('Couldn\'t register Sable with Windows');
+            return;
+          }
+          toast('In Windows settings, choose Sable for .epub (and .mobi, .azw3)');
+          await FileAssoc.openDefaultApps();
+        },
+      ),
       Text(
         registered == null ? '' : (registered! ? 'Sable is offered for EPUB, MOBI and AZW3 files.' : 'Not set up yet.'),
         style: ts(c: tk.faint, size: 12),
@@ -1192,62 +1203,89 @@ class _PcPhoneState extends State<_PcPhone> {
       listenable: SyncServer.I,
       builder: (context, _) {
         final sv = SyncServer.I;
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Switch(value: sv.enabled, onChanged: (v) => sv.setEnabled(v)),
-            const SizedBox(width: 8),
-            Expanded(child: Text('Let my phone sync with this PC over WiFi', style: ts())),
-          ]),
-          if (sv.enabled) ...[
-            const SizedBox(height: 6),
-            Text(sv.problem ?? 'Ready. Sable on the phone finds this PC by itself when both are on the same WiFi.',
-                style: ts(c: sv.problem == null ? tk.sec : tk.danger, size: 12.5)),
-            const SizedBox(height: 12),
-            Row(crossAxisAlignment: CrossAxisAlignment.center, children: [
-              Text('Pairing code', style: ts(c: tk.sec)),
-              const SizedBox(width: 14),
-              SelectableText(sv.code.length == 6 ? '${sv.code.substring(0, 3)} ${sv.code.substring(3)}' : sv.code,
-                  style: ts(size: 24, w: FontWeight.w700, mono: true, c: lk.acc)),
-              const SizedBox(width: 14),
-              Btn.ghost('New code', icon: Icons.refresh, dense: true, onTap: sv.newCode),
-            ]),
-            Text('On the phone: Settings → Connection → Connect to your PC, then type this code. Each code works once.',
-                style: ts(c: tk.faint, size: 12)),
-            const SizedBox(height: 8),
-            Text(
-              addresses.isEmpty
-                  ? 'This PC isn\'t on a network right now.'
-                  : 'This PC\'s address: ${addresses.join(', ')} (type it on the phone if it doesn\'t find the PC).',
-              style: ts(c: tk.sec, size: 12.5),
-            ),
-            Text('The first time, Windows may ask whether Sable can use the network: allow it for private networks.',
-                style: ts(c: tk.faint, size: 12)),
-            const SizedBox(height: 12),
-            Text('Paired phones', style: ts(w: FontWeight.w600)),
-            const SizedBox(height: 4),
-            if (sv.phones.isEmpty) Text('None yet.', style: ts(c: tk.faint)),
-            for (final ph in sv.phones)
-              Row(children: [
-                Icon(Icons.phone_android, size: 16, color: tk.sec),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Switch(value: sv.enabled, onChanged: (v) => sv.setEnabled(v)),
                 const SizedBox(width: 8),
-                Expanded(
-                  child: Text('${ph.name} · last seen ${ph.lastSeen == 0 ? 'never' : '${dateText(ph.lastSeen)} ${timeText(ph.lastSeen)}'}',
-                      style: ts()),
-                ),
-                Btn.ghost('Unpair', dense: true, onTap: () async {
-                  if (await confirm(context, 'Unpair ${ph.name}?',
-                      'It can\'t sync with this PC until it\'s paired again with a new code. Nothing is deleted on either side.',
-                      confirmLabel: 'Unpair')) {
-                    sv.removePhone(ph);
-                  }
-                }),
-              ]),
-            if (sv.lastSyncText.isNotEmpty) ...[
+                Expanded(child: Text('Let my phone sync with this PC over WiFi', style: ts())),
+              ],
+            ),
+            if (sv.enabled) ...[
               const SizedBox(height: 6),
-              Text('Last sync: ${sv.lastSyncText} · ${timeText(sv.lastSyncAt)}', style: ts(c: tk.faint, size: 12)),
+              Text(
+                sv.problem ?? 'Ready. Sable on the phone finds this PC by itself when both are on the same WiFi.',
+                style: ts(c: sv.problem == null ? tk.sec : tk.danger, size: 12.5),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Text('Pairing code', style: ts(c: tk.sec)),
+                  const SizedBox(width: 14),
+                  SelectableText(
+                    sv.code.length == 6 ? '${sv.code.substring(0, 3)} ${sv.code.substring(3)}' : sv.code,
+                    style: ts(size: 24, w: FontWeight.w700, mono: true, c: lk.acc),
+                  ),
+                  const SizedBox(width: 14),
+                  Btn.ghost('New code', icon: Icons.refresh, dense: true, onTap: sv.newCode),
+                ],
+              ),
+              Text(
+                'On the phone: Settings → Connection → Connect to your PC, then type this code. Each code works once.',
+                style: ts(c: tk.faint, size: 12),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                addresses.isEmpty
+                    ? 'This PC isn\'t on a network right now.'
+                    : 'This PC\'s address: ${addresses.join(', ')} (type it on the phone if it doesn\'t find the PC).',
+                style: ts(c: tk.sec, size: 12.5),
+              ),
+              Text(
+                'The first time, Windows may ask whether Sable can use the network: allow it for private networks.',
+                style: ts(c: tk.faint, size: 12),
+              ),
+              const SizedBox(height: 12),
+              Text('Paired phones', style: ts(w: FontWeight.w600)),
+              const SizedBox(height: 4),
+              if (sv.phones.isEmpty) Text('None yet.', style: ts(c: tk.faint)),
+              for (final ph in sv.phones)
+                Row(
+                  children: [
+                    Icon(Icons.phone_android, size: 16, color: tk.sec),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${ph.name} · last seen ${ph.lastSeen == 0 ? 'never' : '${dateText(ph.lastSeen)} ${timeText(ph.lastSeen)}'}',
+                        style: ts(),
+                      ),
+                    ),
+                    Btn.ghost(
+                      'Unpair',
+                      dense: true,
+                      onTap: () async {
+                        if (await confirm(
+                          context,
+                          'Unpair ${ph.name}?',
+                          'It can\'t sync with this PC until it\'s paired again with a new code. Nothing is deleted on either side.',
+                          confirmLabel: 'Unpair',
+                        )) {
+                          sv.removePhone(ph);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              if (sv.lastSyncText.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text('Last sync: ${sv.lastSyncText} · ${timeText(sv.lastSyncAt)}', style: ts(c: tk.faint, size: 12)),
+              ],
             ],
           ],
-        ]);
+        );
       },
     );
   }

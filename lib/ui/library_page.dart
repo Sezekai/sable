@@ -31,28 +31,11 @@ String _folderName(String path) {
   return parts.isEmpty ? path : parts.last;
 }
 
-/// The library's scrolling: twice as far for each notch of the mouse wheel.
-class _FastScroll extends ScrollController {
-  @override
-  ScrollPosition createScrollPosition(ScrollPhysics physics, ScrollContext context, ScrollPosition? oldPosition) =>
-      _FastPosition(physics: physics, context: context, oldPosition: oldPosition, debugLabel: debugLabel);
-}
-
-class _FastPosition extends ScrollPositionWithSingleContext {
-  _FastPosition({required super.physics, required super.context, super.oldPosition, super.debugLabel});
-  @override
-  void pointerScroll(double delta) {
-    // Ctrl+wheel changes the cover size instead.
-    if (HardwareKeyboard.instance.isControlPressed) return;
-    super.pointerScroll(delta * 2);
-  }
-}
-
 class LibraryPageState extends State<LibraryPage> {
   final search = TextEditingController(text: Library.I.filter.search);
   final Set<String> ticked = {}; // volume keys
   String? _lastTick;
-  final scroll = _FastScroll();
+  final scroll = SmoothScroll(speed: 2, ctrlZooms: true);
   List<Entry> _entries = [];
 
   static void noop() {}

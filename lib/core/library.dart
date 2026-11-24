@@ -1081,6 +1081,69 @@ class Library extends ChangeNotifier {
     return null;
   }
 
+  /// The quick way in for a file double-clicked in Explorer: the book is
+  /// found (or remembered) from the file's fingerprint alone, so the reader can
+  /// open straight away. Its details and cover are read afterwards.
+  Book? openOutsideNow(String path) {
+    final file = File(path);
+    if (!file.existsSync()) return null;
+    final low = p.normalize(path).toLowerCase();
+    for (final b in _books) {
+      if (!b.missing && p.normalize(b.path).toLowerCase() == low) return b;
+    }
+    final st = file.statSync();
+    final info = BookInfo(path)
+      ..format = formatOf(path)
+      ..size = st.size
+      ..mtime = st.modified.millisecondsSinceEpoch ~/ 1000;
+    final raf = file.openSync();
+    try {
+      info.fingerprint = fingerprintOf(raf, st.size);
+    } finally {
+      raf.closeSync();
+    }
+    for (final b in _books) {
+      if (!b.outside && !b.missing && b.fingerprint == info.fingerprint) return b;
+    }
+    var b = _outsideByFp(info.fingerprint);
+    if (b == null) {
+      b = _newBook(info, LibFolder(p.dirname(path)))
+        ..root = ''
+        ..outside = true;
+      Db.I.insertBook(b);
+      Db.I.updateExtras(b);
+      _books.add(b);
+      _byId[b.id] = b;
+    } else if (b.path != path) {
+      b
+        ..path = path
+        ..fileName = p.basename(path)
+        ..missing = false;
+      Db.I.updateFile(b);
+    }
+    final found = b;
+    // Details and cover once the reader is up.
+    Future<void>.delayed(const Duration(seconds: 2), () => _fillOutside(found, path));
+    changed();
+    return found;
+  }
+
+  Future<void> _fillOutside(Book b, String path) async {
+    try {
+      final infos = await inspectInIsolate([path], zipPasswords);
+      if (infos.isEmpty || infos.first.fingerprint != b.fingerprint || infos.first.error != null) return;
+      final info = infos.first;
+      if (info.format == 'pdf') await _inspectPdf(info);
+      if (info.cover != null) await _saveCover(info.fingerprint, info.cover!);
+      _apply(b, info, LibFolder(p.dirname(path)));
+      b.root = '';
+      Db.I.updateFile(b);
+      changed();
+    } catch (e) {
+      AppLog.I.warn('Reading the details of ${p.basename(path)}: $e');
+    }
+  }
+
   /// A file opened with Sable (double-clicked in Explorer). A book from the
   /// library opens as usual; any other file is remembered (its place, history
   /// and so on) without being added to the library — and if it's added later,

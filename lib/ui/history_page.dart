@@ -47,9 +47,7 @@ class _HistoryPageState extends State<HistoryPage> {
                 .where(
                   (i) =>
                       query.isEmpty ||
-                      '${i.title.displayTitle} ${i.title.displaySeries ?? ''} ${i.title.displayAuthor ?? ''}'
-                          .toLowerCase()
-                          .contains(query),
+                      '${i.title.displayTitle} ${i.title.displaySeries ?? ''} ${i.title.displayAuthor ?? ''}'.toLowerCase().contains(query),
                 )
                 .toList()
               ..sort((a, b) => b.at.compareTo(a.at));
@@ -71,9 +69,7 @@ class _HistoryPageState extends State<HistoryPage> {
           }
           // A faint line between entries of the same day.
           if (rows.isNotEmpty && rows.last is! Padding) {
-            rows.add(
-              Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 8), color: tk.line.withValues(alpha: 0.55)),
-            );
+            rows.add(Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 8), color: tk.line.withValues(alpha: 0.55)));
           }
           rows.add(_row(it));
         }
@@ -87,9 +83,9 @@ class _HistoryPageState extends State<HistoryPage> {
                   Text('History', style: ts(size: 15, w: FontWeight.w700)),
                   const SizedBox(width: 10),
                   if (!isPhone)
-                  Expanded(
-                    child: Text('Every time you read: when, for how long, and how far you got.', style: ts(c: tk.sec)),
-                  ),
+                    Expanded(
+                      child: Text('Every time you read: when, for how long, and how far you got.', style: ts(c: tk.sec)),
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -101,23 +97,24 @@ class _HistoryPageState extends State<HistoryPage> {
                     ),
                     // On the phone the history belongs to the PC, so it's cleared there.
                     if (!isPhone) const SizedBox(width: 8),
-                    if (!isPhone) Btn(
-                      'Clear history',
-                      kind: BtnKind.dangerGhost,
-                      onTap: () async {
-                        final ok = await confirm(
-                          context,
-                          'Clear all reading history?',
-                          'Reading sessions are removed. Read counts, ratings, favourites and tags stay, and your files aren\'t touched.',
-                          confirmLabel: 'Clear history',
-                          danger: true,
-                        );
-                        if (ok) {
-                          Db.I.raw.execute('DELETE FROM sessions');
-                          Library.I.changed();
-                        }
-                      },
-                    ),
+                    if (!isPhone)
+                      Btn(
+                        'Clear history',
+                        kind: BtnKind.dangerGhost,
+                        onTap: () async {
+                          final ok = await confirm(
+                            context,
+                            'Clear all reading history?',
+                            'Reading sessions are removed. Read counts, ratings, favourites and tags stay, and your files aren\'t touched.',
+                            confirmLabel: 'Clear history',
+                            danger: true,
+                          );
+                          if (ok) {
+                            Db.I.raw.execute('DELETE FROM sessions');
+                            Library.I.changed();
+                          }
+                        },
+                      ),
                   ],
                 ),
               ),
@@ -125,7 +122,9 @@ class _HistoryPageState extends State<HistoryPage> {
               Expanded(
                 child: rows.isEmpty
                     ? const EmptyState(icon: Icons.history, text: 'Nothing read yet. What you read shows up here.')
-                    : ListView(children: rows),
+                    : Smooth(
+                        builder: (sc) => ListView(controller: sc, children: rows),
+                      ),
               ),
             ],
           ),
@@ -155,14 +154,18 @@ class _HistoryPageState extends State<HistoryPage> {
     final what = s == null
         ? (it.note ?? '')
         : '${timeText(s.startedAt)} · ${humanHours(s.activeSeconds)} · ${(s.fromPct * 100).floor()}% → ${(s.toPct * 100).floor()}%'
-            '${s.completed ? ' · finished' : ''} · ${s.device}';
+              '${s.completed ? ' · finished' : ''} · ${s.device}';
     return GestureDetector(
       onTap: () => openBook(context, t),
       onLongPress: s == null
           ? null
           : () async {
-              if (await confirm(context, 'Remove this history entry?', 'Only the record of this session is removed.',
-                  confirmLabel: 'Remove entry')) {
+              if (await confirm(
+                context,
+                'Remove this history entry?',
+                'Only the record of this session is removed.',
+                confirmLabel: 'Remove entry',
+              )) {
                 Db.I.deleteSession(s.id);
                 Library.I.changed();
               }
@@ -170,19 +173,39 @@ class _HistoryPageState extends State<HistoryPage> {
       child: Container(
         color: Colors.transparent,
         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
-        child: Row(children: [
-          SizedBox(width: 58, height: 87, child: ClipRRect(borderRadius: BorderRadius.circular(4), child: BookCover(book: t, width: 58))),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(t.inSeries ? '${t.cardTitle}${t.volumeText.isEmpty ? '' : ' · ${t.volumeText}'}' : t.displayTitle,
-                  style: ts(w: FontWeight.w600), overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 2),
-              Text(what, style: ts(c: tk.sec, size: 12.5, tab: true), overflow: TextOverflow.ellipsis, maxLines: 2),
-            ]),
-          ),
-          Icon(Icons.play_arrow_rounded, size: 20, color: tk.faint),
-        ]),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 58,
+              height: 87,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(4),
+                child: BookCover(book: t, width: 58),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    t.inSeries ? '${t.cardTitle}${t.volumeText.isEmpty ? '' : ' · ${t.volumeText}'}' : t.displayTitle,
+                    style: ts(w: FontWeight.w600),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    what,
+                    style: ts(c: tk.sec, size: 12.5, tab: true),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.play_arrow_rounded, size: 20, color: tk.faint),
+          ],
+        ),
       ),
     );
   }

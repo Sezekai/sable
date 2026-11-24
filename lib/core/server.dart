@@ -22,7 +22,9 @@ class LocalServer {
   int get port => _server?.port ?? 0;
   String get base => 'http://127.0.0.1:$port';
 
-  Future<void> start() async {
+  Future<void>? _starting;
+  Future<void> start() => _starting ??= _start();
+  Future<void> _start() async {
     if (_server != null) return;
     _server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     _server!.listen(_handle, onError: (e) => AppLog.I.warn('Reader server: $e'));

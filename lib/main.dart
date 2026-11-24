@@ -18,6 +18,7 @@ import 'core/log.dart';
 import 'core/paths.dart';
 import 'core/samples.dart';
 import 'core/platform.dart';
+import 'core/server.dart';
 import 'core/settings.dart';
 import 'core/sync_client.dart';
 import 'core/sync_server.dart';
@@ -112,6 +113,22 @@ Future<void> main(List<String> args) async {
   }
   Library.I.load();
 
+  // Started by double-clicking an ebook: find the book now and get the book
+  // engine going, so the reader opens first and everything else waits.
+  Book? startBook;
+  if (openPath != null && !selftest && isDesktop) {
+    try {
+      startBook = Library.I.openOutsideNow(openPath);
+    } catch (e, st) {
+      AppLog.I.error('Opening $openPath', e, st);
+    }
+    if (startBook != null) {
+      Nav.I.booting = true;
+      unawaited(ReaderWeb.init());
+      unawaited(LocalServer.I.start());
+    }
+  }
+
   if (isPhone && !Platform.isAndroid) {
     // The phone app on a computer (for tests): a phone-shaped window.
     await windowManager.ensureInitialized();
@@ -174,15 +191,34 @@ Future<void> main(List<String> args) async {
       unawaited(_phoneSync());
       phoneLifecycle = AppLifecycleListener(onResume: () => unawaited(_phoneSync()));
     } else {
-      // The ebook file Sable was started with (double-clicked in Explorer).
-      if (openPath != null) unawaited(_openFile(openPath));
-      unawaited(FileAssoc.refresh());
+      // The ebook file Sable was started with (double-clicked in Explorer)
+      // opens first; the library's own work starts once it's up.
+      final b = startBook;
+      if (b != null) {
+        final ctx = navKey.currentContext;
+        if (ctx != null) unawaited(openBook(ctx, b));
+        Future<void>.delayed(const Duration(milliseconds: 400), () {
+          Nav.I.booting = false;
+          Nav.I.changed();
+        });
+      } else if (openPath != null) {
+        unawaited(_openFile(openPath));
+      }
       if (safeMode) Settings.I.watchFolders = false;
-      // A quick rescan picks up anything added while Sable was closed;
-      // unchanged books are skipped, so this is fast.
-      Library.I.scan();
-      Library.I.startWatching();
-      unawaited(SyncServer.I.start());
+      void background() {
+        unawaited(FileAssoc.refresh());
+        // A quick rescan picks up anything added while Sable was closed;
+        // unchanged books are skipped, so this is fast.
+        Library.I.scan();
+        Library.I.startWatching();
+        unawaited(SyncServer.I.start());
+      }
+
+      if (b != null) {
+        Future<void>.delayed(const Duration(seconds: 4), background);
+      } else {
+        background();
+      }
     }
     // A heartbeat in the log file: memory and what's running, every 30 seconds,
     // so the log shows what Sable was doing if it ever stops unexpectedly.
@@ -201,15 +237,17 @@ AppLifecycleListener? phoneLifecycle;
 /// as usual; others are remembered without joining the library.
 Future<void> _openFile(String path) async {
   try {
-    final b = await Library.I.openOutside(path);
+    final b = Library.I.openOutsideNow(path) ?? await Library.I.openOutside(path);
     final ctx = navKey.currentContext;
     if (b == null || ctx == null || !ctx.mounted) {
       if (b == null) toast('That file couldn\'t be opened as a book.', ToastKind.error);
       return;
     }
     // A book already open closes first.
-    navKey.currentState?.popUntil((r) => r.isFirst);
-    await Future<void>.delayed(const Duration(milliseconds: 250));
+    if (Nav.I.readerOpen) {
+      navKey.currentState?.popUntil((r) => r.isFirst);
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
     final c2 = navKey.currentContext;
     if (c2 != null && c2.mounted) await openBook(c2, b);
   } catch (e, st) {
@@ -481,15 +519,23 @@ Future<void> _runSelftest() async {
         check(r.fraction > before, 'turning pages moves on (${(before * 100).toStringAsFixed(1)}% → ${(r.fraction * 100).toStringAsFixed(1)}%)');
         await _screenshot('reader');
         // Separate margins and a text colour.
-        final st = Settings.I.style;
+        // Separate margins and a text colour: kept for this book only.
+        final st = r.st;
         st.marginXPct = 15;
         st.marginYPct = 10;
         st.textColor = '#ffd27a';
-        r.cmd('sable.setStyle(${jsonEncode(st.toJson())})');
+        r.styleChanged();
         await Future<void>.delayed(const Duration(milliseconds: 900));
         await _screenshot('reader-margins-colour');
-        st.apply(ReadingStyle().toJson());
-        r.cmd('sable.setStyle(${jsonEncode(st.toJson())})');
+        check(Db.I.bookStyle(epub.id)?['textColor'] == '#ffd27a' && Settings.I.style.textColor == '',
+            'a change in the reader is kept for that book, not the default');
+        st.take(Settings.I.style, const [], except: true);
+        r.styleChanged();
+        check(Db.I.bookStyle(epub.id) == null && !r.ownStyle, '"Use the default" puts the book back on the default');
+        r.showPanel('text');
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+        await _screenshot('reader-text');
+        r.togglePanel('text');
         // Space keeps the controls up; M opens them as a keyboard menu.
         r.togglePinned();
         check(r.chrome && r.pinned, 'Space shows the controls and keeps them');

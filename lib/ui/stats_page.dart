@@ -224,122 +224,125 @@ class _StatsPageState extends State<StatsPage> {
               ),
               const SizedBox(height: 10),
               Expanded(
-                child: ListView(
-                  children: [
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        tile('Finished', '${completedIds.length}', 'different books'),
-                        tile('Total reads', '${comps.length}', 'including re-reads'),
-                        tile('Pages read', '$pagesRead', '1 page = 1,500 letters'),
-                        tile('Time reading', humanHours(secs)),
-                        tile('Reading speed', speed == 0 ? '–' : '$speed', 'pages an hour'),
-                        tile('Series read from', '${seriesDone.length}'),
-                        tile('Books started', '$started', 'of ${titles.length} in the library'),
-                        tile('Unread', '${titles.where((t) => !t.isRead).length}'),
-                        tile('In progress', '${titles.where((t) => t.inProgress).length}'),
-                        tile('Favourites', '${titles.where((t) => t.favourite).length}'),
-                        tile('Average rating', avgRating == 0 ? '–' : avgRating.toStringAsFixed(2), '${rated.length} rated'),
-                        tile(
-                          'Library size',
-                          humanSize(titles.fold<int>(0, (a, t) => a + t.any.size)),
-                          'about ${titles.fold<int>(0, (a, t) => a + t.length)} pages',
-                        ),
-                        tile('Authors', '${artists.length}'),
-                        tile('Streak', '$current ${current == 1 ? 'day' : 'days'}', 'longest: $longest ${longest == 1 ? 'day' : 'days'}'),
-                        tile('Average session', humanHours(avgSession)),
-                        tile('Read on PC', '${(pcShare * 100).round()}%', 'the rest on your phone'),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        card(
-                          'Books finished per month',
-                          Bars(values: monthBooks, labels: [for (final m in months) mn[m.month - 1]], height: 160),
-                        ),
-                        card(
-                          'Pages read per month',
-                          Bars(values: monthPages, labels: [for (final m in months) mn[m.month - 1]], height: 160),
-                        ),
-                        card(
-                          'Hours reading per month',
-                          Bars(values: monthHours, labels: [for (final m in months) mn[m.month - 1]], height: 160, decimals: 1),
-                        ),
-                        card(
-                          'Reading days, last 26 weeks',
-                          SingleChildScrollView(
-                            scrollDirection: Axis.horizontal,
-                            reverse: true,
-                            child: Heatmap(dayPages: dayPages, today: today),
+                child: Smooth(
+                  builder: (sc) => ListView(
+                    controller: sc,
+                    children: [
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          tile('Finished', '${completedIds.length}', 'different books'),
+                          tile('Total reads', '${comps.length}', 'including re-reads'),
+                          tile('Pages read', '$pagesRead', '1 page = 1,500 letters'),
+                          tile('Time reading', humanHours(secs)),
+                          tile('Reading speed', speed == 0 ? '–' : '$speed', 'pages an hour'),
+                          tile('Series read from', '${seriesDone.length}'),
+                          tile('Books started', '$started', 'of ${titles.length} in the library'),
+                          tile('Unread', '${titles.where((t) => !t.isRead).length}'),
+                          tile('In progress', '${titles.where((t) => t.inProgress).length}'),
+                          tile('Favourites', '${titles.where((t) => t.favourite).length}'),
+                          tile('Average rating', avgRating == 0 ? '–' : avgRating.toStringAsFixed(2), '${rated.length} rated'),
+                          tile(
+                            'Library size',
+                            humanSize(titles.fold<int>(0, (a, t) => a + t.any.size)),
+                            'about ${titles.fold<int>(0, (a, t) => a + t.length)} pages',
                           ),
-                        ),
-                        card(
-                          'When you read (minutes by hour of day)',
-                          Bars(values: hours, labels: [for (var h = 0; h < 24; h++) h % 3 == 0 ? '$h' : ''], height: 140),
-                        ),
-                        card(
-                          'Ratings',
-                          Bars(
-                            values: ratingDist,
-                            labels: [for (var i = 1; i <= 10; i++) (i / 2).toString().replaceAll('.0', '')],
-                            height: 140,
+                          tile('Authors', '${artists.length}'),
+                          tile('Streak', '$current ${current == 1 ? 'day' : 'days'}', 'longest: $longest ${longest == 1 ? 'day' : 'days'}'),
+                          tile('Average session', humanHours(avgSession)),
+                          tile('Read on PC', '${(pcShare * 100).round()}%', 'the rest on your phone'),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 10,
+                        children: [
+                          card(
+                            'Books finished per month',
+                            Bars(values: monthBooks, labels: [for (final m in months) mn[m.month - 1]], height: 160),
                           ),
-                        ),
-                        card(
-                          'Most read authors',
-                          Column(
-                            children: [
-                              for (final e in topArtists.take(8))
-                                _rankRow(e.key, '${e.value} books', e.value / max(1, topArtists.first.value)),
-                              if (topArtists.isEmpty) Text('Nothing finished yet.', style: ts(c: tk.faint)),
-                            ],
+                          card(
+                            'Pages read per month',
+                            Bars(values: monthPages, labels: [for (final m in months) mn[m.month - 1]], height: 160),
                           ),
-                        ),
-                        card(
-                          'Most read series',
-                          Column(
-                            children: [
-                              for (final e in topSeries.take(8))
-                                _rankRow(e.key, '${e.value} volumes', e.value / max(1, topSeries.first.value)),
-                              if (topSeries.isEmpty) Text('No series finished yet.', style: ts(c: tk.faint)),
-                            ],
+                          card(
+                            'Hours reading per month',
+                            Bars(values: monthHours, labels: [for (final m in months) mn[m.month - 1]], height: 160, decimals: 1),
                           ),
-                        ),
-                        card(
-                          'Most re-read',
-                          Column(
-                            children: [
-                              for (final t in reread.take(8))
-                                _rankRow(
-                                  '${t.any.cardTitle} ${t.any.volumeText}'.trim(),
-                                  '×${t.readCount}',
-                                  t.readCount / max(1, reread.first.readCount),
-                                ),
-                              if (reread.isEmpty) Text('Nothing read twice yet.', style: ts(c: tk.faint)),
-                            ],
+                          card(
+                            'Reading days, last 26 weeks',
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              reverse: true,
+                              child: Heatmap(dayPages: dayPages, today: today),
+                            ),
                           ),
-                        ),
-                        card(
-                          'Best rated authors (2+ rated books)',
-                          Column(
-                            children: [
-                              for (final e in bestArtists.take(8))
-                                _rankRow(
-                                  e.key,
-                                  (e.value.reduce((a, b) => a + b) / e.value.length).toStringAsFixed(2),
-                                  (e.value.reduce((a, b) => a + b) / e.value.length) / 5,
-                                ),
-                              if (bestArtists.isEmpty) Text('Rate a few more books to see this.', style: ts(c: tk.faint)),
-                            ],
+                          card(
+                            'When you read (minutes by hour of day)',
+                            Bars(values: hours, labels: [for (var h = 0; h < 24; h++) h % 3 == 0 ? '$h' : ''], height: 140),
                           ),
-                        ),
-                      ],
-                    ),
-                  ],
+                          card(
+                            'Ratings',
+                            Bars(
+                              values: ratingDist,
+                              labels: [for (var i = 1; i <= 10; i++) (i / 2).toString().replaceAll('.0', '')],
+                              height: 140,
+                            ),
+                          ),
+                          card(
+                            'Most read authors',
+                            Column(
+                              children: [
+                                for (final e in topArtists.take(8))
+                                  _rankRow(e.key, '${e.value} books', e.value / max(1, topArtists.first.value)),
+                                if (topArtists.isEmpty) Text('Nothing finished yet.', style: ts(c: tk.faint)),
+                              ],
+                            ),
+                          ),
+                          card(
+                            'Most read series',
+                            Column(
+                              children: [
+                                for (final e in topSeries.take(8))
+                                  _rankRow(e.key, '${e.value} volumes', e.value / max(1, topSeries.first.value)),
+                                if (topSeries.isEmpty) Text('No series finished yet.', style: ts(c: tk.faint)),
+                              ],
+                            ),
+                          ),
+                          card(
+                            'Most re-read',
+                            Column(
+                              children: [
+                                for (final t in reread.take(8))
+                                  _rankRow(
+                                    '${t.any.cardTitle} ${t.any.volumeText}'.trim(),
+                                    '×${t.readCount}',
+                                    t.readCount / max(1, reread.first.readCount),
+                                  ),
+                                if (reread.isEmpty) Text('Nothing read twice yet.', style: ts(c: tk.faint)),
+                              ],
+                            ),
+                          ),
+                          card(
+                            'Best rated authors (2+ rated books)',
+                            Column(
+                              children: [
+                                for (final e in bestArtists.take(8))
+                                  _rankRow(
+                                    e.key,
+                                    (e.value.reduce((a, b) => a + b) / e.value.length).toStringAsFixed(2),
+                                    (e.value.reduce((a, b) => a + b) / e.value.length) / 5,
+                                  ),
+                                if (bestArtists.isEmpty) Text('Rate a few more books to see this.', style: ts(c: tk.faint)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],

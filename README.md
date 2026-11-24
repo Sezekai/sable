@@ -71,6 +71,10 @@ Settings → Storage shows each place with its size, and can open, move or clear
 - **Two pages side by side** when the window is wide (Auto), or always one or always two (D).
 - **Text and spacing** (A): font (Literata, PT Serif, Domine, Arbutus Slab, Georgia, Palatino, Inter, Segoe UI, Open Sans, Lato or the book's own), text size, line, word and paragraph spacing, paragraph indents, side and top/bottom margins in %. Every value has − and + buttons (tap the number to type one) in steps of .5 or 5%.
 - **Settings** (S): theme, pages at once, text colour, alignment (left, centre, right, justify), **same top line** (text always starts on the same line, even after a heading or a new chapter), turning, animation, controls and mouse.
+- **Each book keeps its own settings**: a change made while reading applies to that book only. **Save as default for all books** (at the bottom of either panel) makes them the default for every book you haven't changed; **Use the default** puts a book back.
+- **Text size means the same in every book**: the size most of a book's text is drawn at is measured and matched to your setting, whatever sizes the book itself uses.
+- **Page width** for one page (and scrolling) on the PC, as a share of the window. Scrolling is smooth, carries on into the next chapter, and can keep or drop the top and bottom margins.
+- The mouse pointer hides when it stops over the page.
 - Click the left or right of the page to turn, the middle for the bars. Arrow keys, Page Up/Down, Space and the mouse wheel turn pages too.
 - **Contents** (T), **bookmarks** (B), **search in the book** (/), and a progress slider.
 - Bars show the chapter, page of the chapter, percentage, and time left in the chapter and the book. When hidden, a slim line shows the chapter page, percentage and clock.

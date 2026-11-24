@@ -37,31 +37,39 @@ void showInFolder(Book b) {
   }
 }
 
-Widget _crumbs(List<(String, VoidCallback?)> items) => Row(children: [
-      IconBtn(Icons.arrow_back, tooltip: 'Back (Esc or the mouse\'s back button)', onTap: () {
+Widget _crumbs(List<(String, VoidCallback?)> items) => Row(
+  children: [
+    IconBtn(
+      Icons.arrow_back,
+      tooltip: 'Back (Esc or the mouse\'s back button)',
+      onTap: () {
         if (Nav.I.canGoBack) {
           Nav.I.back();
         } else {
           Nav.I.closeDetail();
         }
-      }),
-      const SizedBox(width: 6),
-      for (var i = 0; i < items.length; i++) ...[
-        if (i > 0) Icon(Icons.chevron_right, size: 16, color: tk.faint),
-        Flexible(
-          child: GestureDetector(
-            onTap: items[i].$2,
-            child: MouseRegion(
-              cursor: items[i].$2 == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
-              child: Text(items[i].$1,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: ts(c: i == items.length - 1 ? tk.text : tk.sec, w: i == items.length - 1 ? FontWeight.w600 : null)),
+      },
+    ),
+    const SizedBox(width: 6),
+    for (var i = 0; i < items.length; i++) ...[
+      if (i > 0) Icon(Icons.chevron_right, size: 16, color: tk.faint),
+      Flexible(
+        child: GestureDetector(
+          onTap: items[i].$2,
+          child: MouseRegion(
+            cursor: items[i].$2 == null ? SystemMouseCursors.basic : SystemMouseCursors.click,
+            child: Text(
+              items[i].$1,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: ts(c: i == items.length - 1 ? tk.text : tk.sec, w: i == items.length - 1 ? FontWeight.w600 : null),
             ),
           ),
         ),
-      ],
-    ]);
+      ),
+    ],
+  ],
+);
 
 // ---------------- shared layout ----------------
 
@@ -79,7 +87,9 @@ Widget _coverBox(Book b, double w, {double? progress, String? coverKey, VoidCall
     height: w * 1.5,
     child: Stack(
       children: [
-        Positioned.fill(child: BookCover(book: b, width: w, coverKey: coverKey)),
+        Positioned.fill(
+          child: BookCover(book: b, width: w, coverKey: coverKey),
+        ),
         if (progress != null) Positioned(left: 0, right: 0, bottom: 0, child: ProgressLine(value: progress)),
         if (onChange != null && !isPhone)
           Positioned(
@@ -96,10 +106,8 @@ Widget _coverBox(Book b, double w, {double? progress, String? coverKey, VoidCall
 );
 
 /// The top of a book or series page: back, then where you are.
-Widget _topNav(List<(String, VoidCallback?)> items) => Padding(
-  padding: isPhone ? const EdgeInsets.fromLTRB(4, 2, 12, 0) : const EdgeInsets.fromLTRB(12, 10, 16, 4),
-  child: _crumbs(items),
-);
+Widget _topNav(List<(String, VoidCallback?)> items) =>
+    Padding(padding: isPhone ? const EdgeInsets.fromLTRB(4, 2, 12, 0) : const EdgeInsets.fromLTRB(12, 10, 16, 4), child: _crumbs(items));
 
 EdgeInsets get _pagePad => isPhone ? const EdgeInsets.fromLTRB(12, 6, 12, 20) : const EdgeInsets.fromLTRB(24, 12, 24, 24);
 
@@ -142,7 +150,11 @@ class BookPage extends StatelessWidget {
       builder: (context, _) {
         final v = Library.I.volumes[volumeKey];
         if (v == null) {
-          return EmptyState(icon: Icons.search_off, text: 'This book isn\'t in the library any more.', action: Btn('Back', onTap: Nav.I.closeDetail));
+          return EmptyState(
+            icon: Icons.search_off,
+            text: 'This book isn\'t in the library any more.',
+            action: Btn('Back', onTap: Nav.I.closeDetail),
+          );
         }
         final b = v.primary;
         final series = Library.I.seriesOf(b);
@@ -156,9 +168,12 @@ class BookPage extends StatelessWidget {
             ]),
             Expanded(
               child: LayoutBuilder(
-                builder: (context, box) => SingleChildScrollView(
-                  padding: _pagePad,
-                  child: isPhone ? _phone(context, v, box.maxWidth) : _pc(context, v, box.maxWidth),
+                builder: (context, box) => Smooth(
+                  builder: (sc) => SingleChildScrollView(
+                    controller: sc,
+                    padding: _pagePad,
+                    child: isPhone ? _phone(context, v, box.maxWidth) : _pc(context, v, box.maxWidth),
+                  ),
                 ),
               ),
             ),
@@ -272,10 +287,16 @@ class BookPage extends StatelessWidget {
             style: ts(c: lk.acc, w: FontWeight.w600, size: compact ? 12.5 : null),
           ),
         const SizedBox(height: 4),
-        SelectableText(b.displayTitle, style: ts(size: compact ? 18 : 24, w: FontWeight.w700)),
+        SelectableText(
+          b.displayTitle,
+          style: ts(size: compact ? 18 : 24, w: FontWeight.w700),
+        ),
         if (b.displayAuthor != null) ...[
           const SizedBox(height: 4),
-          Text(b.displayAuthor!, style: ts(size: compact ? 13 : 14, c: tk.sec)),
+          Text(
+            b.displayAuthor!,
+            style: ts(size: compact ? 13 : 14, c: tk.sec),
+          ),
         ],
         const SizedBox(height: 8),
         Wrap(
@@ -286,7 +307,11 @@ class BookPage extends StatelessWidget {
             _chip(b.displayKind.label),
             for (final f in v.formats) _chip(f.format.toUpperCase() + (isInZip(f.path) ? ' in ZIP' : '')),
             if (b.collection) _chip('Collection'),
-            if (len.isNotEmpty) Text(len, style: ts(c: tk.faint, size: compact ? 12 : null)),
+            if (len.isNotEmpty)
+              Text(
+                len,
+                style: ts(c: tk.faint, size: compact ? 12 : null),
+              ),
           ],
         ),
         const SizedBox(height: 8),
@@ -318,20 +343,35 @@ class BookPage extends StatelessWidget {
           spacing: 8,
           runSpacing: 8,
           children: [
-            Btn(v.isRead ? 'Mark unread' : 'Mark read', icon: v.isRead ? Icons.remove_done : Icons.done_all, dense: true, onTap: () => Library.I.markRead([v], !v.isRead)),
+            Btn(
+              v.isRead ? 'Mark unread' : 'Mark read',
+              icon: v.isRead ? Icons.remove_done : Icons.done_all,
+              dense: true,
+              onTap: () => Library.I.markRead([v], !v.isRead),
+            ),
             if (series != null && Library.I.previousVolumes(v).any((x) => !x.isRead))
-              Btn('Mark previous as read', dense: true, onTap: () {
-                final prev = Library.I.previousVolumes(v);
-                Library.I.markRead(prev, true);
-                toast('Marked ${prev.length} earlier volumes read');
-              }),
+              Btn(
+                'Mark previous as read',
+                dense: true,
+                onTap: () {
+                  final prev = Library.I.previousVolumes(v);
+                  Library.I.markRead(prev, true);
+                  toast('Marked ${prev.length} earlier volumes read');
+                },
+              ),
             Btn('Edit details', icon: Icons.edit_outlined, dense: true, onTap: () => editDetails(context, v.primary)),
             if (!isPhone) Btn('Change cover', icon: Icons.image_outlined, dense: true, onTap: () => _changeCover(context, v)),
           ],
         ),
         if (tags.isNotEmpty) ...[
           const SizedBox(height: 10),
-          Wrap(spacing: 6, runSpacing: 6, children: [for (final t in tags) TagChip(t.name, Color(t.color), onRemove: () => Library.I.removeTag(t, [v]))]),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final t in tags) TagChip(t.name, Color(t.color), onRemove: () => Library.I.removeTag(t, [v])),
+            ],
+          ),
         ],
       ],
     );
@@ -353,10 +393,7 @@ class BookPage extends StatelessWidget {
           onEdit: () => _editDescription(context, v),
           onFind: b.shownDescription != null || busy ? null : () => Lookup.run(volumes: [v]),
         ),
-        if (v.hasCopies) ...[
-          const SizedBox(height: 18),
-          CopiesBox(volume: v, onRead: (f) => openBook(context, f)),
-        ],
+        if (v.hasCopies) ...[const SizedBox(height: 18), CopiesBox(volume: v, onRead: (f) => openBook(context, f))],
       ],
     );
   }
@@ -367,10 +404,7 @@ class BookPage extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (isPhone && v.hasCopies) ...[
-          CopiesBox(volume: v, onRead: (f) => openBook(context, f)),
-          const SizedBox(height: 16),
-        ],
+        if (isPhone && v.hasCopies) ...[CopiesBox(volume: v, onRead: (f) => openBook(context, f)), const SizedBox(height: 16)],
         _details(v),
         const SizedBox(height: 18),
         Text('Reading history', style: ts(w: FontWeight.w700)),
@@ -381,7 +415,9 @@ class BookPage extends StatelessWidget {
           for (final s in sessions.take(40))
             Container(
               padding: const EdgeInsets.symmetric(vertical: 5),
-              decoration: BoxDecoration(border: Border(bottom: BorderSide(color: tk.line.withValues(alpha: 0.5)))),
+              decoration: BoxDecoration(
+                border: Border(bottom: BorderSide(color: tk.line.withValues(alpha: 0.5))),
+              ),
               child: Wrap(
                 spacing: 10,
                 runSpacing: 2,
@@ -409,8 +445,15 @@ class BookPage extends StatelessWidget {
 
   Widget _chip(String s) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    decoration: BoxDecoration(color: tk.raised, borderRadius: BorderRadius.circular(10), border: Border.all(color: tk.line)),
-    child: Text(s, style: ts(size: 11.5, c: tk.sec, w: FontWeight.w600)),
+    decoration: BoxDecoration(
+      color: tk.raised,
+      borderRadius: BorderRadius.circular(10),
+      border: Border.all(color: tk.line),
+    ),
+    child: Text(
+      s,
+      style: ts(size: 11.5, c: tk.sec, w: FontWeight.w600),
+    ),
   );
 
   Widget _details(Volume v) {
@@ -440,14 +483,25 @@ class BookPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(r.$1, style: ts(c: tk.faint, size: 12)),
-                        SelectableText(r.$2, style: ts(c: tk.sec, mono: r.$1 == 'File', size: r.$1 == 'File' ? 11.5 : 13)),
+                        SelectableText(
+                          r.$2,
+                          style: ts(c: tk.sec, mono: r.$1 == 'File', size: r.$1 == 'File' ? 11.5 : 13),
+                        ),
                       ],
                     )
                   : Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        SizedBox(width: 120, child: Text(r.$1, style: ts(c: tk.faint))),
-                        Expanded(child: SelectableText(r.$2, style: ts(c: tk.sec, mono: r.$1 == 'File', size: r.$1 == 'File' ? 12 : null))),
+                        SizedBox(
+                          width: 120,
+                          child: Text(r.$1, style: ts(c: tk.faint)),
+                        ),
+                        Expanded(
+                          child: SelectableText(
+                            r.$2,
+                            style: ts(c: tk.sec, mono: r.$1 == 'File', size: r.$1 == 'File' ? 12 : null),
+                          ),
+                        ),
                       ],
                     ),
             ),
@@ -470,23 +524,39 @@ Future<void> editDetails(BuildContext context, Book b) async {
       builder: (c, set) => AppDialog(
         title: 'Edit details',
         width: 520,
-        body: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Your changes are kept even when the library is scanned again. Clear a box to go back to what the file says.',
-              style: ts(c: tk.sec)),
-          const SizedBox(height: 12),
-          for (final (l, ctl) in [('Title', title), ('Author', author), ('Series', series), ('Volume', vol)])
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(children: [
-                SizedBox(width: 70, child: Text(l, style: ts(c: tk.sec))),
-                Expanded(child: Field(controller: ctl)),
-              ]),
+        body: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Your changes are kept even when the library is scanned again. Clear a box to go back to what the file says.',
+              style: ts(c: tk.sec),
             ),
-          Row(children: [
-            SizedBox(width: 70, child: Text('Type', style: ts(c: tk.sec))),
-            Seg<Kind>(value: kind, items: [for (final k in Kind.values) (k, k.label)], onChanged: (k) => set(() => kind = k)),
-          ]),
-        ]),
+            const SizedBox(height: 12),
+            for (final (l, ctl) in [('Title', title), ('Author', author), ('Series', series), ('Volume', vol)])
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 70,
+                      child: Text(l, style: ts(c: tk.sec)),
+                    ),
+                    Expanded(child: Field(controller: ctl)),
+                  ],
+                ),
+              ),
+            Row(
+              children: [
+                SizedBox(
+                  width: 70,
+                  child: Text('Type', style: ts(c: tk.sec)),
+                ),
+                Seg<Kind>(value: kind, items: [for (final k in Kind.values) (k, k.label)], onChanged: (k) => set(() => kind = k)),
+              ],
+            ),
+          ],
+        ),
         actions: [
           Btn('Cancel', onTap: () => Navigator.pop(c, false)),
           Btn.primary('Save', onTap: () => Navigator.pop(c, true)),
@@ -546,7 +616,11 @@ class _SeriesPageState extends State<SeriesPage> {
       builder: (context, _) {
         final all = Library.I.series[widget.seriesKey];
         if (all == null || all.isEmpty) {
-          return EmptyState(icon: Icons.search_off, text: 'This series isn\'t in the library any more.', action: Btn('Back', onTap: Nav.I.closeDetail));
+          return EmptyState(
+            icon: Icons.search_off,
+            text: 'This series isn\'t in the library any more.',
+            action: Btn('Back', onTap: Nav.I.closeDetail),
+          );
         }
         final editions = all.map((v) => v.any.edition).toSet().toList()..sort();
         edition ??= editions.first;
@@ -560,9 +634,12 @@ class _SeriesPageState extends State<SeriesPage> {
             _topNav([('Library', Nav.I.closeDetail), (entry.label, null)]),
             Expanded(
               child: LayoutBuilder(
-                builder: (context, box) => SingleChildScrollView(
-                  padding: _pagePad,
-                  child: isPhone ? _phone(context, entry, editions, box.maxWidth) : _pc(context, entry, editions, box.maxWidth),
+                builder: (context, box) => Smooth(
+                  builder: (sc) => SingleChildScrollView(
+                    controller: sc,
+                    padding: _pagePad,
+                    child: isPhone ? _phone(context, entry, editions, box.maxWidth) : _pc(context, entry, editions, box.maxWidth),
+                  ),
                 ),
               ),
             ),
@@ -613,10 +690,16 @@ class _SeriesPageState extends State<SeriesPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SelectableText(e.label, style: ts(size: compact ? 18 : 24, w: FontWeight.w700)),
+        SelectableText(
+          e.label,
+          style: ts(size: compact ? 18 : 24, w: FontWeight.w700),
+        ),
         if (authors.isNotEmpty) ...[
           const SizedBox(height: 4),
-          Text(authors.take(2).join(', '), style: ts(c: tk.sec, size: compact ? 13 : 14)),
+          Text(
+            authors.take(2).join(', '),
+            style: ts(c: tk.sec, size: compact ? 13 : 14),
+          ),
         ],
         const SizedBox(height: 8),
         Text(
@@ -624,7 +707,10 @@ class _SeriesPageState extends State<SeriesPage> {
           style: ts(c: tk.faint, size: compact ? 12.5 : null),
         ),
         const SizedBox(height: 8),
-        SizedBox(width: compact ? null : 360, child: Progress(value: vols.isEmpty ? 0 : readN / vols.length, height: compact ? 4 : 5)),
+        SizedBox(
+          width: compact ? null : 360,
+          child: Progress(value: vols.isEmpty ? 0 : readN / vols.length, height: compact ? 4 : 5),
+        ),
         const SizedBox(height: 6),
         Wrap(
           crossAxisAlignment: WrapCrossAlignment.center,
@@ -657,11 +743,21 @@ class _SeriesPageState extends State<SeriesPage> {
     spacing: 8,
     runSpacing: 8,
     children: [
-      Btn(selecting ? 'Done selecting' : 'Select', icon: selecting ? Icons.check : Icons.checklist, dense: true, onTap: () => setState(() {
-        selecting = !selecting;
-        if (!selecting) ticked.clear();
-      })),
-      Btn('Edit series', icon: Icons.edit_outlined, dense: true, onTap: () => seriesDialog(context, name: e.label, volumes: e.volumes)),
+      Btn(
+        selecting ? 'Done selecting' : 'Select',
+        icon: selecting ? Icons.check : Icons.checklist,
+        dense: true,
+        onTap: () => setState(() {
+          selecting = !selecting;
+          if (!selecting) ticked.clear();
+        }),
+      ),
+      Btn(
+        'Edit series',
+        icon: Icons.edit_outlined,
+        dense: true,
+        onTap: () => seriesDialog(context, name: e.label, volumes: e.volumes),
+      ),
       if (!isPhone) Btn('Change cover', icon: Icons.image_outlined, dense: true, onTap: _changeCover),
     ],
   );
@@ -680,13 +776,7 @@ class _SeriesPageState extends State<SeriesPage> {
     final twoCols = w - cw - 28 >= 900;
     final info = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _head(e, editions),
-        const SizedBox(height: 12),
-        _actions(e),
-        const SizedBox(height: 18),
-        _desc(e),
-      ],
+      children: [_head(e, editions), const SizedBox(height: 12), _actions(e), const SizedBox(height: 18), _desc(e)],
     );
     final books = _books(e);
     return Row(
@@ -760,39 +850,60 @@ class _SeriesPageState extends State<SeriesPage> {
     final sel = vols.where((v) => ticked.contains(v.key)).toList();
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 6, 12, 6),
-      decoration: BoxDecoration(color: tk.panel, border: Border(top: BorderSide(color: tk.line))),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            Text('${sel.length} selected', style: ts(w: FontWeight.w600)),
-            const SizedBox(width: 10),
-            if (isPhone) ...[
-              Btn('Download', dense: true, icon: Icons.download_outlined, onTap: () {
-                Downloads.I.add(sel.map((v) => v.primary));
-                setState(ticked.clear);
-              }),
-              const SizedBox(width: 6),
-            ],
-            Btn('Mark read', dense: true, icon: Icons.done_all, onTap: () => Library.I.markRead(sel, true)),
-            const SizedBox(width: 6),
-            Btn('Mark unread', dense: true, icon: Icons.remove_done, onTap: () => Library.I.markRead(sel, false)),
-            const SizedBox(width: 6),
-            TagMenu(volumes: sel),
-            if (!isPhone) ...[
-              const SizedBox(width: 6),
-              Btn('Find descriptions', dense: true, icon: Icons.travel_explore, onTap: () => Lookup.run(volumes: sel)),
-              if (sel.length >= 2) ...[
+      decoration: BoxDecoration(
+        color: tk.panel,
+        border: Border(top: BorderSide(color: tk.line)),
+      ),
+      child: Smooth(
+        builder: (sc) => SingleChildScrollView(
+          controller: sc,
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              Text('${sel.length} selected', style: ts(w: FontWeight.w600)),
+              const SizedBox(width: 10),
+              if (isPhone) ...[
+                Btn(
+                  'Download',
+                  dense: true,
+                  icon: Icons.download_outlined,
+                  onTap: () {
+                    Downloads.I.add(sel.map((v) => v.primary));
+                    setState(ticked.clear);
+                  },
+                ),
                 const SizedBox(width: 6),
-                Btn('Combine as one book', dense: true, icon: Icons.merge, onTap: () {
-                  Library.I.combine(sel);
-                  setState(ticked.clear);
-                }),
               ],
+              Btn('Mark read', dense: true, icon: Icons.done_all, onTap: () => Library.I.markRead(sel, true)),
+              const SizedBox(width: 6),
+              Btn('Mark unread', dense: true, icon: Icons.remove_done, onTap: () => Library.I.markRead(sel, false)),
+              const SizedBox(width: 6),
+              TagMenu(volumes: sel),
+              if (!isPhone) ...[
+                const SizedBox(width: 6),
+                Btn(
+                  'Find descriptions',
+                  dense: true,
+                  icon: Icons.travel_explore,
+                  onTap: () => Lookup.run(volumes: sel),
+                ),
+                if (sel.length >= 2) ...[
+                  const SizedBox(width: 6),
+                  Btn(
+                    'Combine as one book',
+                    dense: true,
+                    icon: Icons.merge,
+                    onTap: () {
+                      Library.I.combine(sel);
+                      setState(ticked.clear);
+                    },
+                  ),
+                ],
+              ],
+              const SizedBox(width: 12),
+              Btn.ghost('Clear', dense: true, onTap: () => setState(ticked.clear)),
             ],
-            const SizedBox(width: 12),
-            Btn.ghost('Clear', dense: true, onTap: () => setState(ticked.clear)),
-          ],
+          ),
         ),
       ),
     );
@@ -838,7 +949,9 @@ class _SeriesPageState extends State<SeriesPage> {
                   height: (isPhone ? 50 : cw) * 1.5,
                   child: Stack(
                     children: [
-                      Positioned.fill(child: BookCover(book: b, width: cw)),
+                      Positioned.fill(
+                        child: BookCover(book: b, width: cw),
+                      ),
                       Positioned(left: 0, right: 0, bottom: 0, child: ProgressLine(value: v.progress)),
                     ],
                   ),
@@ -849,8 +962,19 @@ class _SeriesPageState extends State<SeriesPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(b.volumeText.isEmpty ? b.displayTitle : b.volumeText, style: ts(w: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
-                    if (sub.isNotEmpty) Text(sub, style: ts(c: tk.sec, size: 12), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    Text(
+                      b.volumeText.isEmpty ? b.displayTitle : b.volumeText,
+                      style: ts(w: FontWeight.w600),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (sub.isNotEmpty)
+                      Text(
+                        sub,
+                        style: ts(c: tk.sec, size: 12),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     const SizedBox(height: 2),
                     Text(
                       [
@@ -867,7 +991,10 @@ class _SeriesPageState extends State<SeriesPage> {
               if (v.isRead)
                 Icon(Icons.check_circle, size: 16, color: tk.ok)
               else if (v.inProgress)
-                Text('${(v.progress * 100).floor()}%', style: ts(c: lk.acc, w: FontWeight.w600, tab: true)),
+                Text(
+                  '${(v.progress * 100).floor()}%',
+                  style: ts(c: lk.acc, w: FontWeight.w600, tab: true),
+                ),
               if (isPhone && Downloads.I.isQueued(b)) ...[const SizedBox(width: 8), Icon(Icons.downloading, size: 16, color: lk.acc)],
               PopupMenuButton<String>(
                 tooltip: '',
@@ -891,13 +1018,33 @@ class _SeriesPageState extends State<SeriesPage> {
                   }
                 },
                 itemBuilder: (_) => [
-                  PopupMenuItem(value: 'read', child: Text('Read', style: ts())),
-                  PopupMenuItem(value: 'mark', child: Text(v.isRead ? 'Mark unread' : 'Mark read', style: ts())),
-                  PopupMenuItem(value: 'prev', child: Text('Mark this and earlier volumes read', style: ts())),
-                  if (!isPhone) PopupMenuItem(value: 'folder', child: Text('Show in folder', style: ts())),
+                  PopupMenuItem(
+                    value: 'read',
+                    child: Text('Read', style: ts()),
+                  ),
+                  PopupMenuItem(
+                    value: 'mark',
+                    child: Text(v.isRead ? 'Mark unread' : 'Mark read', style: ts()),
+                  ),
+                  PopupMenuItem(
+                    value: 'prev',
+                    child: Text('Mark this and earlier volumes read', style: ts()),
+                  ),
+                  if (!isPhone)
+                    PopupMenuItem(
+                      value: 'folder',
+                      child: Text('Show in folder', style: ts()),
+                    ),
                   if (isPhone && !Downloads.I.isDone(b) && !Downloads.I.isQueued(b))
-                    PopupMenuItem(value: 'download', child: Text('Download (${humanSize(b.size)})', style: ts())),
-                  if (isPhone && Downloads.I.isDone(b)) PopupMenuItem(value: 'remove', child: Text('Remove from this phone', style: ts())),
+                    PopupMenuItem(
+                      value: 'download',
+                      child: Text('Download (${humanSize(b.size)})', style: ts()),
+                    ),
+                  if (isPhone && Downloads.I.isDone(b))
+                    PopupMenuItem(
+                      value: 'remove',
+                      child: Text('Remove from this phone', style: ts()),
+                    ),
                 ],
               ),
             ],

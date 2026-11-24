@@ -31,7 +31,9 @@ class ReaderWeb {
   static String? runtimeVersion;
   static bool checked = false;
 
-  static Future<void> init() async {
+  static Future<void>? _starting;
+  static Future<void> init() => _starting ??= _init();
+  static Future<void> _init() async {
     if (checked) return;
     checked = true;
     if (!Platform.isWindows) return;
@@ -44,9 +46,7 @@ class ReaderWeb {
         );
         return;
       }
-      env = await WebViewEnvironment.create(
-        settings: WebViewEnvironmentSettings(userDataFolder: p.join(AppPaths.I.data, 'WebView2')),
-      );
+      env = await WebViewEnvironment.create(settings: WebViewEnvironmentSettings(userDataFolder: p.join(AppPaths.I.data, 'WebView2')));
       AppLog.I.info('Book engine: WebView2 $runtimeVersion');
     } catch (e) {
       AppLog.I.warn('Couldn\'t start WebView2: $e');
@@ -147,6 +147,10 @@ class ReaderPageState extends State<ReaderPage> {
   bool menu = false;
   int menuIndex = 0;
   bool cursorHidden = false;
+
+  /// This book's settings: its own once changed, else a copy of the default.
+  late final ReadingStyle st = _loadStyle();
+  bool ownStyle = false;
   final Set<String> _hover = {};
   Timer? _hideTimer;
   Offset? _lastPointer;
@@ -191,7 +195,7 @@ class ReaderPageState extends State<ReaderPage> {
   String get _startPosition => book.isRead && book.progress >= 0.999 ? '' : book.position;
 
   Map<String, dynamic> _init() => {
-    'style': Settings.I.style.toJson(),
+    'style': _styleJson(),
     'theme': Look.I.readerTheme(),
     'position': _startPosition,
     // No place saved in this file but read in another copy (a PDF and an EPUB of one book): start from there.
@@ -325,10 +329,72 @@ class ReaderPageState extends State<ReaderPage> {
     }
   }
 
+  ReadingStyle _loadStyle() {
+    final own = Db.I.bookStyle(book.id);
+    ownStyle = own != null;
+    return own == null ? Settings.I.style.copy() : (Settings.I.style.copy()..apply(own));
+  }
+
+  /// What the page engine gets (the phone always uses the whole width).
+  Map<String, dynamic> _styleJson() => {...st.toJson(), if (isPhone) 'pageWidth': 100};
+
+  void styleChanged() => _styleChanged();
+
+  /// A change in the reader is kept for this book only.
   void _styleChanged() {
-    Settings.I.save();
-    if (!isPdf) cmd('sable.setStyle(${jsonEncode(Settings.I.style.toJson())})');
+    ownStyle = !st.same(Settings.I.style);
+    Db.I.saveBookStyle(book.id, ownStyle ? st.toJson() : null);
+    if (!isPdf) cmd('sable.setStyle(${jsonEncode(_styleJson())})');
     setState(() {});
+  }
+
+  /// A panel's footer: use the default here, or make these the default for every book.
+  Widget _defaultsFooter(String hint, List<String> keys, {bool except = false, VoidCallback? alsoReset}) {
+    final def = Settings.I.style;
+    final probe = st.copy()..take(def, keys, except: except);
+    final differs = !probe.same(st);
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(hint, style: ts(size: 11.5, c: tk.faint)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              Btn(
+                'Save as default for all books',
+                icon: Icons.bookmark_added_outlined,
+                dense: true,
+                onTap: !differs
+                    ? null
+                    : () {
+                        def.take(st, keys, except: except);
+                        Settings.I.save();
+                        _styleChanged();
+                        toast('Saved as the default. Books you haven\'t changed use it.');
+                      },
+              ),
+              Btn.ghost(
+                'Use the default',
+                icon: Icons.restart_alt,
+                dense: true,
+                onTap: !differs && alsoReset == null
+                    ? null
+                    : () {
+                        st.take(def, keys, except: except);
+                        alsoReset?.call();
+                        _styleChanged();
+                      },
+              ),
+            ],
+          ),
+          Text(ownStyle ? 'This book has its own settings.' : 'This book uses the default settings.', style: ts(size: 11, c: tk.faint)),
+        ],
+      ),
+    );
   }
 
   void _themeChanged() {
@@ -410,13 +476,13 @@ class ReaderPageState extends State<ReaderPage> {
   }
 
   void changeSize(double d) {
-    final s = Settings.I.style;
+    final s = st;
     s.size = (s.size + d).clamp(10, 48);
     _styleChanged();
   }
 
   void cycleLayout() {
-    final s = Settings.I.style;
+    final s = st;
     s.layout = switch (s.layout) {
       PageLayout.auto => PageLayout.one,
       PageLayout.one => PageLayout.two,
@@ -553,8 +619,7 @@ class ReaderPageState extends State<ReaderPage> {
         _Ctl(Icons.search, 'Search', 'Search in the book (/)', () => togglePanel('search'), active: panel == 'search', closes: true),
       _Ctl(Icons.toc, 'Contents', 'Contents (T)', () => togglePanel('contents'), active: panel == 'contents', closes: true),
       _Ctl(Icons.tune, 'Settings', 'Reader settings (S)', () => togglePanel('style'), active: panel == 'style', closes: true),
-      if (!isPdf)
-        _Ctl(Icons.format_size, 'Text', 'Text & spacing (A)', () => togglePanel('text'), active: panel == 'text', closes: true),
+      if (!isPdf) _Ctl(Icons.format_size, 'Text', 'Text & spacing (A)', () => togglePanel('text'), active: panel == 'text', closes: true),
       _Ctl(
         Icons.bookmarks_outlined,
         'Bookmarks',
@@ -758,61 +823,71 @@ class ReaderPageState extends State<ReaderPage> {
         if (!didPop) back();
       },
       child: Focus(
-      focusNode: _focus,
-      autofocus: true,
-      onKeyEvent: _onKey,
-      child: Scaffold(
-        backgroundColor: t.pageBg,
-        body: ListenableBuilder(
-          listenable: Nav.I,
-          builder: (context, _) => Listener(
-            // The mouse's back and forward buttons (over a PDF or the bars).
-            onPointerDown: (e) {
-              if (e.buttons & kBackMouseButton != 0) _mouse('back');
-              if (e.buttons & kForwardMouseButton != 0) _mouse('forward');
-            },
-            onPointerHover: (e) {
-              final last = _lastPointer;
-              _lastPointer = e.position;
-              if (last == null || (e.position - last).distance > 2) _moved();
-            },
-            child: MouseRegion(
-              cursor: cursorHidden ? SystemMouseCursors.none : MouseCursor.defer,
-              child: Stack(
-                children: [
-                  // The book itself is drawn at the screen's own size, so it stays sharp.
-                  // A phone can keep the text clear of the camera notch and the status line.
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    top: isPhone && Settings.I.style.clearNotch ? MediaQuery.viewPaddingOf(context).top : 0,
-                    bottom: isPhone && Settings.I.style.clearStatus
-                        ? (_statusH * Look.I.readerScale + MediaQuery.viewPaddingOf(context).bottom)
-                        : 0,
-                    child: UiScale(scale: 1 / Look.I.appScale, child: _engine()),
-                  ),
-                  // The bars and panels follow "Reader controls size".
-                  Positioned.fill(
-                    child: UiScale(
-                      scale: Look.I.readerScale,
-                      child: SafeArea(child: Stack(
-                        children: [
-                          if (!chrome && error == null) _statusLine(),
-                          if (chrome && !(isPhone && panel != null)) _topBar(),
-                          if (chrome && !(isPhone && panel != null)) _bottomBar(),
-                          if (panel != null) _panel(),
-                          if (endCard) _end(),
-                          const ToastLayer(),
-                        ],
-                      )),
+        focusNode: _focus,
+        autofocus: true,
+        onKeyEvent: _onKey,
+        child: Scaffold(
+          backgroundColor: t.pageBg,
+          body: ListenableBuilder(
+            listenable: Nav.I,
+            builder: (context, _) => Listener(
+              // The mouse's back and forward buttons (over a PDF or the bars).
+              onPointerDown: (e) {
+                if (e.buttons & kBackMouseButton != 0) _mouse('back');
+                if (e.buttons & kForwardMouseButton != 0) _mouse('forward');
+              },
+              onPointerHover: (e) {
+                final last = _lastPointer;
+                _lastPointer = e.position;
+                if (last == null || (e.position - last).distance > 2) _moved();
+              },
+              child: MouseRegion(
+                cursor: cursorHidden ? SystemMouseCursors.none : MouseCursor.defer,
+                child: Stack(
+                  children: [
+                    // The book itself is drawn at the screen's own size, so it stays sharp.
+                    // A phone can keep the text clear of the camera notch and the status line.
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: isPhone && st.clearNotch ? MediaQuery.viewPaddingOf(context).top : 0,
+                      bottom: isPhone && st.clearStatus ? (_statusH * Look.I.readerScale + MediaQuery.viewPaddingOf(context).bottom) : 0,
+                      child: UiScale(scale: 1 / Look.I.appScale, child: _engine()),
                     ),
-                  ),
-                ],
+                    // Over the page (under the bars): the book's view sets its own pointer,
+                    // so hiding it needs a layer on top that lets every click through.
+                    if (!isPhone)
+                      Positioned.fill(
+                        child: MouseRegion(
+                          opaque: false,
+                          hitTestBehavior: HitTestBehavior.translucent,
+                          cursor: cursorHidden ? SystemMouseCursors.none : MouseCursor.defer,
+                        ),
+                      ),
+                    // The bars and panels follow "Reader controls size".
+                    Positioned.fill(
+                      child: UiScale(
+                        scale: Look.I.readerScale,
+                        child: SafeArea(
+                          child: Stack(
+                            children: [
+                              if (!chrome && error == null) _statusLine(),
+                              if (chrome && !(isPhone && panel != null)) _topBar(),
+                              if (chrome && !(isPhone && panel != null)) _bottomBar(),
+                              if (panel != null) _panel(),
+                              if (endCard) _end(),
+                              const ToastLayer(),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
-      ),
       ),
     );
   }
@@ -849,7 +924,7 @@ class ReaderPageState extends State<ReaderPage> {
         path: path!,
         controller: pdf,
         startPage: start,
-        layout: Settings.I.style.layout,
+        layout: st.layout,
         background: tk.pageBg,
         darkPages: Settings.I.pdfDarkPages,
         crop: Settings.I.pdfCrop,
@@ -1028,10 +1103,7 @@ class ReaderPageState extends State<ReaderPage> {
                   ),
                 ),
               if (moreOpen && shown < ctls.length)
-                Wrap(
-                  alignment: WrapAlignment.start,
-                  children: [for (var i = shown; i < ctls.length; i++) btn(i)],
-                ),
+                Wrap(alignment: WrapAlignment.start, children: [for (var i = shown; i < ctls.length; i++) btn(i)]),
             ],
           ),
         ),
@@ -1062,8 +1134,18 @@ class ReaderPageState extends State<ReaderPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(_title, style: ts(w: FontWeight.w600), overflow: TextOverflow.ellipsis, maxLines: 2),
-                              if (chapter.isNotEmpty) Text(chapter, style: ts(size: 11.5, c: tk.faint), overflow: TextOverflow.ellipsis),
+                              Text(
+                                _title,
+                                style: ts(w: FontWeight.w600),
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 2,
+                              ),
+                              if (chapter.isNotEmpty)
+                                Text(
+                                  chapter,
+                                  style: ts(size: 11.5, c: tk.faint),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
                             ],
                           ),
                         ),
@@ -1090,8 +1172,17 @@ class ReaderPageState extends State<ReaderPage> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(_title, style: ts(w: FontWeight.w600), overflow: TextOverflow.ellipsis),
-                        if (chapter.isNotEmpty && !menu) Text(chapter, style: ts(size: 11.5, c: tk.faint), overflow: TextOverflow.ellipsis),
+                        Text(
+                          _title,
+                          style: ts(w: FontWeight.w600),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (chapter.isNotEmpty && !menu)
+                          Text(
+                            chapter,
+                            style: ts(size: 11.5, c: tk.faint),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         if (menu)
                           Text(
                             '← → move · Enter or Space choose · M or Esc close',
@@ -1195,10 +1286,7 @@ class ReaderPageState extends State<ReaderPage> {
         child: Stack(
           children: [
             Positioned.fill(
-              child: GestureDetector(
-                behavior: HitTestBehavior.opaque,
-                onTap: () => setState(() => panel = null),
-              ),
+              child: GestureDetector(behavior: HitTestBehavior.opaque, onTap: () => setState(() => panel = null)),
             ),
             Positioned(
               right: 4,
@@ -1230,7 +1318,9 @@ class ReaderPageState extends State<ReaderPage> {
           padding: EdgeInsets.fromLTRB(14, isPhone ? 4 : 10, 6, isPhone ? 2 : 6),
           child: Row(
             children: [
-              Expanded(child: Text(title, style: ts(w: FontWeight.w700))),
+              Expanded(
+                child: Text(title, style: ts(w: FontWeight.w700)),
+              ),
               IconBtn(Icons.close, tooltip: 'Close (Esc)', onTap: () => setState(() => panel = null)),
             ],
           ),
@@ -1243,32 +1333,35 @@ class ReaderPageState extends State<ReaderPage> {
   Widget _contents() {
     if (toc.isEmpty) return EmptyState(icon: Icons.toc, text: ready ? 'This book has no contents list.' : 'Loading…');
     final current = isPdf ? chapter : chapterHref;
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
-      itemCount: toc.length,
-      itemBuilder: (_, i) {
-        final it = toc[i];
-        final on = isPdf ? it.label == current : it.target == current;
-        return Hoverable(
-          builder: (h) => GestureDetector(
-            onTap: () {
-              goTarget(it.target);
-              setState(() => panel = null);
-            },
-            child: Container(
-              padding: EdgeInsets.fromLTRB(10 + it.level * 14.0, 7, 10, 7),
-              decoration: BoxDecoration(
-                color: on ? lk.tint(tk.raised, 0.18) : (h ? tk.raised : null),
-                borderRadius: BorderRadius.circular(lk.rControl),
-              ),
-              child: Text(
-                it.label.isEmpty ? 'Untitled' : it.label,
-                style: ts(c: on ? tk.text : tk.sec, w: on ? FontWeight.w600 : null),
+    return Smooth(
+      builder: (sc) => ListView.builder(
+        controller: sc,
+        padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
+        itemCount: toc.length,
+        itemBuilder: (_, i) {
+          final it = toc[i];
+          final on = isPdf ? it.label == current : it.target == current;
+          return Hoverable(
+            builder: (h) => GestureDetector(
+              onTap: () {
+                goTarget(it.target);
+                setState(() => panel = null);
+              },
+              child: Container(
+                padding: EdgeInsets.fromLTRB(10 + it.level * 14.0, 7, 10, 7),
+                decoration: BoxDecoration(
+                  color: on ? lk.tint(tk.raised, 0.18) : (h ? tk.raised : null),
+                  borderRadius: BorderRadius.circular(lk.rControl),
+                ),
+                child: Text(
+                  it.label.isEmpty ? 'Untitled' : it.label,
+                  style: ts(c: on ? tk.text : tk.sec, w: on ? FontWeight.w600 : null),
+                ),
               ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -1285,49 +1378,49 @@ class ReaderPageState extends State<ReaderPage> {
         Expanded(
           child: bms.isEmpty
               ? const EmptyState(icon: Icons.bookmark_border, text: 'No bookmarks yet.\nPress B to bookmark the page you\'re on.')
-              : ListView(
-                  padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
-                  children: [
-                    for (final b in bms)
-                      Hoverable(
-                        builder: (h) => GestureDetector(
-                          onTap: () {
-                            goTarget(b.position);
-                            setState(() => panel = null);
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
-                            decoration: BoxDecoration(
-                              color: h ? tk.raised : null,
-                              borderRadius: BorderRadius.circular(lk.rControl),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.bookmark, size: 16, color: lk.acc),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(b.label, style: ts(), overflow: TextOverflow.ellipsis),
-                                      Text(dateText(b.at), style: ts(size: 11.5, c: tk.faint)),
-                                    ],
+              : Smooth(
+                  builder: (sc) => ListView(
+                    controller: sc,
+                    padding: const EdgeInsets.fromLTRB(6, 0, 6, 10),
+                    children: [
+                      for (final b in bms)
+                        Hoverable(
+                          builder: (h) => GestureDetector(
+                            onTap: () {
+                              goTarget(b.position);
+                              setState(() => panel = null);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.fromLTRB(10, 6, 4, 6),
+                              decoration: BoxDecoration(color: h ? tk.raised : null, borderRadius: BorderRadius.circular(lk.rControl)),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.bookmark, size: 16, color: lk.acc),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(b.label, style: ts(), overflow: TextOverflow.ellipsis),
+                                        Text(dateText(b.at), style: ts(size: 11.5, c: tk.faint)),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                                IconBtn(
-                                  Icons.close,
-                                  tooltip: 'Remove this bookmark',
-                                  onTap: () {
-                                    Db.I.deleteBookmark(b.id);
-                                    setState(() {});
-                                  },
-                                ),
-                              ],
+                                  IconBtn(
+                                    Icons.close,
+                                    tooltip: 'Remove this bookmark',
+                                    onTap: () {
+                                      Db.I.deleteBookmark(b.id);
+                                      setState(() {});
+                                    },
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
         ),
       ],
@@ -1400,47 +1493,50 @@ class ReaderPageState extends State<ReaderPage> {
             child: Text('${results.length}${results.length >= 300 ? '+' : ''} found', style: ts(c: tk.faint, size: 12)),
           ),
         Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.fromLTRB(6, 6, 6, 10),
-            itemCount: results.length,
-            itemBuilder: (_, i) {
-              final r = results[i];
-              return Hoverable(
-                builder: (h) => GestureDetector(
-                  onTap: () => goTarget('${r['cfi']}'),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
-                    decoration: BoxDecoration(color: h ? tk.raised : null, borderRadius: BorderRadius.circular(lk.rControl)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if ('${r['label']}'.isNotEmpty) Text('${r['label']}', style: ts(size: 11.5, c: tk.faint)),
-                        Text.rich(
-                          TextSpan(
-                            children: [
-                              TextSpan(
-                                text: '${r['pre']}',
-                                style: ts(c: tk.sec),
-                              ),
-                              TextSpan(
-                                text: '${r['match']}',
-                                style: ts(c: lk.acc, w: FontWeight.w700),
-                              ),
-                              TextSpan(
-                                text: '${r['post']}',
-                                style: ts(c: tk.sec),
-                              ),
-                            ],
+          child: Smooth(
+            builder: (sc) => ListView.builder(
+              controller: sc,
+              padding: const EdgeInsets.fromLTRB(6, 6, 6, 10),
+              itemCount: results.length,
+              itemBuilder: (_, i) {
+                final r = results[i];
+                return Hoverable(
+                  builder: (h) => GestureDetector(
+                    onTap: () => goTarget('${r['cfi']}'),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+                      decoration: BoxDecoration(color: h ? tk.raised : null, borderRadius: BorderRadius.circular(lk.rControl)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if ('${r['label']}'.isNotEmpty) Text('${r['label']}', style: ts(size: 11.5, c: tk.faint)),
+                          Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: '${r['pre']}',
+                                  style: ts(c: tk.sec),
+                                ),
+                                TextSpan(
+                                  text: '${r['match']}',
+                                  style: ts(c: lk.acc, w: FontWeight.w700),
+                                ),
+                                TextSpan(
+                                  text: '${r['post']}',
+                                  style: ts(c: tk.sec),
+                                ),
+                              ],
+                            ),
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ],
@@ -1464,7 +1560,9 @@ class ReaderPageState extends State<ReaderPage> {
             const SizedBox(height: 3),
             Row(
               children: [
-                Flexible(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: child)),
+                Flexible(
+                  child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: child),
+                ),
                 resetBtn,
               ],
             ),
@@ -1476,8 +1574,13 @@ class ReaderPageState extends State<ReaderPage> {
       padding: const EdgeInsets.symmetric(vertical: 5),
       child: Row(
         children: [
-          SizedBox(width: 118, child: Text(label, style: ts(c: tk.sec))),
-          Expanded(child: Align(alignment: Alignment.centerLeft, child: child)),
+          SizedBox(
+            width: 118,
+            child: Text(label, style: ts(c: tk.sec)),
+          ),
+          Expanded(
+            child: Align(alignment: Alignment.centerLeft, child: child),
+          ),
           resetBtn,
         ],
       ),
@@ -1495,373 +1598,344 @@ class ReaderPageState extends State<ReaderPage> {
 
   /// Reader settings: how pages look and behave (the text itself is in "Text & spacing").
   Widget _styles() {
-    final s = Settings.I.style;
-    final d = Settings.defaults.style;
+    final s = st;
+    final d = Settings.I.style;
     final set = _set;
     final row = _row;
     final sw = _sw;
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 0, 8, 14),
-      children: [
-        row(
-          'Theme',
-          Seg<String>(
-            value: Look.I.theme,
-            items: const [('OLED black', 'OLED black'), ('Starlight', 'Starlight')],
-            onChanged: (v) {
-              Look.I.setTheme(v);
+    return Smooth(
+      builder: (sc) => ListView(
+        controller: sc,
+        padding: const EdgeInsets.fromLTRB(14, 0, 8, 14),
+        children: [
+          row(
+            'Theme',
+            Seg<String>(
+              value: Look.I.theme,
+              items: const [('OLED black', 'OLED black'), ('Starlight', 'Starlight')],
+              onChanged: (v) {
+                Look.I.setTheme(v);
+                _themeChanged();
+              },
+            ),
+            changed: Look.I.theme != 'OLED black',
+            reset: () {
+              Look.I.setTheme('OLED black');
               _themeChanged();
             },
           ),
-          changed: Look.I.theme != 'OLED black',
-          reset: () {
-            Look.I.setTheme('OLED black');
-            _themeChanged();
-          },
-        ),
-        row(
-          'Pages',
-          Seg<PageLayout>(
-            value: s.layout,
-            items: const [(PageLayout.auto, 'Auto'), (PageLayout.one, 'One'), (PageLayout.two, 'Two')],
-            onChanged: (v) => set(() => s.layout = v),
-          ),
-          changed: s.layout != d.layout,
-          reset: () => set(() => s.layout = d.layout),
-        ),
-        if (isPdf) ...[
           row(
-            'Crop borders',
-            sw(Settings.I.pdfCrop, (v) {
-              Settings.I.pdfCrop = v;
-              Settings.I.save();
-              setState(() {});
-            }),
-            changed: Settings.I.pdfCrop,
-            reset: () {
-              Settings.I.pdfCrop = false;
-              Settings.I.save();
-              setState(() {});
-            },
-          ),
-          row(
-            'Dark pages',
-            sw(Settings.I.pdfDarkPages, (v) {
-              Settings.I.pdfDarkPages = v;
-              Settings.I.save();
-              setState(() {});
-            }),
-            changed: Settings.I.pdfDarkPages,
-            reset: () {
-              Settings.I.pdfDarkPages = false;
-              Settings.I.save();
-              setState(() {});
-            },
-          ),
-        ],
-        if (!isPdf) ...[
-          row(
-            'Text colour',
-            _ColourSwatch(
-              colour: s.textColor.isEmpty ? tk.pageFg : parseHex(s.textColor),
-              label: s.textColor.isEmpty ? 'Theme' : s.textColor.toUpperCase(),
-              onTap: () async {
-                final start = s.textColor.isEmpty ? null : parseHex(s.textColor);
-                final c = await pickColour(context, start ?? Colors.white, 'Text colour');
-                if (c != null) set(() => s.textColor = hexOf(c));
-              },
+            'Pages',
+            Seg<PageLayout>(
+              value: s.layout,
+              items: const [(PageLayout.auto, 'Auto'), (PageLayout.one, 'One'), (PageLayout.two, 'Two')],
+              onChanged: (v) => set(() => s.layout = v),
             ),
-            changed: s.textColor != d.textColor,
-            reset: () => set(() => s.textColor = d.textColor),
+            changed: s.layout != d.layout,
+            reset: () => set(() => s.layout = d.layout),
           ),
-          row(
-            'Alignment',
-            Seg<String>(
-              value: s.align,
-              items: const [('left', 'Left'), ('center', 'Middle'), ('right', 'Right'), ('justify', 'Justify')],
-              onChanged: (v) => set(() => s.align = v),
-            ),
-            changed: s.align != d.align,
-            reset: () => set(() => s.align = d.align),
-          ),
-          row(
-            'Same top line',
-            sw(s.alignTop, (v) => set(() => s.alignTop = v)),
-            changed: s.alignTop != d.alignTop,
-            reset: () => set(() => s.alignTop = d.alignTop),
-          ),
-          if (_narrowPanel)
-            Text('Every page starts on the same line, even at a new chapter or a heading.', style: ts(size: 11.5, c: tk.faint))
-          else
-            Padding(
-              padding: const EdgeInsets.only(left: 118, bottom: 4),
-              child: Text('Every page starts on the same line, even at a new chapter or a heading.', style: ts(size: 11.5, c: tk.faint)),
-            ),
-          row(
-            'Turning',
-            Seg<PageFlow>(
-              value: s.flow,
-              items: const [(PageFlow.paged, 'Pages'), (PageFlow.scrolled, 'Scroll')],
-              onChanged: (v) => set(() => s.flow = v),
-            ),
-            changed: s.flow != d.flow,
-            reset: () => set(() => s.flow = d.flow),
-          ),
-          if (s.flow == PageFlow.scrolled && !isPhone)
+          if (!isPdf && !isPhone && (s.layout == PageLayout.one || s.flow == PageFlow.scrolled))
             row(
-              'Scroll distance',
+              'Page width',
               NumStep(
-                value: s.scrollStep,
-                step: 10,
-                min: 40,
-                max: 600,
-                title: 'Scroll distance (px a notch)',
-                format: (v) => '${v.round()} px',
-                onChanged: (v) => set(() => s.scrollStep = v),
+                value: s.pageWidth,
+                step: 5,
+                min: 20,
+                max: 100,
+                title: 'Page width (% of the window)',
+                format: (v) => '${v.round()}%',
+                onChanged: (v) => set(() => s.pageWidth = v),
               ),
-              changed: s.scrollStep != d.scrollStep,
-              reset: () => set(() => s.scrollStep = d.scrollStep),
+              changed: s.pageWidth != d.pageWidth,
+              reset: () => set(() => s.pageWidth = d.pageWidth),
             ),
-          row(
-            'Animation',
-            sw(s.animate, (v) => set(() => s.animate = v)),
-            changed: s.animate != d.animate,
-            reset: () => set(() => s.animate = d.animate),
-          ),
-        ],
-        if (isPhone) ...[
-          row(
-            'Clear of the notch',
-            sw(s.clearNotch, (v) => set(() => s.clearNotch = v)),
-            changed: s.clearNotch != d.clearNotch,
-            reset: () => set(() => s.clearNotch = d.clearNotch),
-          ),
-          row(
-            'Clear of the status line',
-            sw(s.clearStatus, (v) => set(() => s.clearStatus = v)),
-            changed: s.clearStatus != d.clearStatus,
-            reset: () => set(() => s.clearStatus = d.clearStatus),
-          ),
-        ],
-        row(
-          'Controls size',
-          NumStep(
-            value: (Look.I.readerScale * 100).roundToDouble(),
-            step: 5,
-            min: 60,
-            max: 200,
-            title: 'Controls size (%)',
-            format: (v) => '${v.round()}%',
-            onChanged: (v) {
-              Look.I.readerScale = v / 100;
-              Look.I.save();
-              setState(() {});
-            },
-          ),
-          changed: (Look.I.readerScale - Look.defaultReaderScale).abs() > 0.001,
-          reset: () {
-            Look.I.readerScale = Look.defaultReaderScale;
-            Look.I.save();
-            setState(() {});
-          },
-        ),
-        if (!isPhone)
-          row(
-            'Mouse ◀ ▶',
-            Seg<String>(
-              value: Settings.I.mouseInReader,
-              items: const [('pages', 'Turn pages'), ('leave', 'Back leaves')],
-              onChanged: (v) {
-                Settings.I.mouseInReader = v;
+          if (isPdf) ...[
+            row(
+              'Crop borders',
+              sw(Settings.I.pdfCrop, (v) {
+                Settings.I.pdfCrop = v;
+                Settings.I.save();
+                setState(() {});
+              }),
+              changed: Settings.I.pdfCrop,
+              reset: () {
+                Settings.I.pdfCrop = false;
                 Settings.I.save();
                 setState(() {});
               },
             ),
-            changed: Settings.I.mouseInReader != 'pages',
-            reset: () {
-              Settings.I.mouseInReader = 'pages';
-              Settings.I.save();
-              setState(() {});
-            },
-          ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(child: Text('These apply to every book.', style: ts(size: 11.5, c: tk.faint))),
-            Btn.ghost(
-              'Reset all',
-              icon: Icons.restart_alt,
-              dense: true,
-              onTap: () {
-                final keep = ReadingStyle()..apply(s.toJson());
-                s.apply(ReadingStyle().toJson());
-                // The text and spacing settings have their own reset.
-                s
-                  ..font = keep.font
-                  ..size = keep.size
-                  ..spacing = keep.spacing
-                  ..wordSpacing = keep.wordSpacing
-                  ..paraSpacing = keep.paraSpacing
-                  ..indent = keep.indent
-                  ..marginXPct = keep.marginXPct
-                  ..marginYPct = keep.marginYPct
-                  ..publisherStyles = keep.publisherStyles;
+            row(
+              'Dark pages',
+              sw(Settings.I.pdfDarkPages, (v) {
+                Settings.I.pdfDarkPages = v;
+                Settings.I.save();
+                setState(() {});
+              }),
+              changed: Settings.I.pdfDarkPages,
+              reset: () {
                 Settings.I.pdfDarkPages = false;
-                Settings.I.pdfCrop = false;
-                Settings.I.mouseInReader = 'pages';
-                Look.I.readerScale = Look.defaultReaderScale;
-                Look.I.save();
-                _styleChanged();
+                Settings.I.save();
+                setState(() {});
               },
             ),
           ],
-        ),
-      ],
+          if (!isPdf) ...[
+            row(
+              'Text colour',
+              _ColourSwatch(
+                colour: s.textColor.isEmpty ? tk.pageFg : parseHex(s.textColor),
+                label: s.textColor.isEmpty ? 'Theme' : s.textColor.toUpperCase(),
+                onTap: () async {
+                  final start = s.textColor.isEmpty ? null : parseHex(s.textColor);
+                  final c = await pickColour(context, start ?? Colors.white, 'Text colour');
+                  if (c != null) set(() => s.textColor = hexOf(c));
+                },
+              ),
+              changed: s.textColor != d.textColor,
+              reset: () => set(() => s.textColor = d.textColor),
+            ),
+            row(
+              'Alignment',
+              Seg<String>(
+                value: s.align,
+                items: const [('left', 'Left'), ('center', 'Middle'), ('right', 'Right'), ('justify', 'Justify')],
+                onChanged: (v) => set(() => s.align = v),
+              ),
+              changed: s.align != d.align,
+              reset: () => set(() => s.align = d.align),
+            ),
+            row(
+              'Same top line',
+              sw(s.alignTop, (v) => set(() => s.alignTop = v)),
+              changed: s.alignTop != d.alignTop,
+              reset: () => set(() => s.alignTop = d.alignTop),
+            ),
+            if (_narrowPanel)
+              Text('Every page starts on the same line, even at a new chapter or a heading.', style: ts(size: 11.5, c: tk.faint))
+            else
+              Padding(
+                padding: const EdgeInsets.only(left: 118, bottom: 4),
+                child: Text('Every page starts on the same line, even at a new chapter or a heading.', style: ts(size: 11.5, c: tk.faint)),
+              ),
+            row(
+              'Turning',
+              Seg<PageFlow>(
+                value: s.flow,
+                items: const [(PageFlow.paged, 'Pages'), (PageFlow.scrolled, 'Scroll')],
+                onChanged: (v) => set(() => s.flow = v),
+              ),
+              changed: s.flow != d.flow,
+              reset: () => set(() => s.flow = d.flow),
+            ),
+            if (s.flow == PageFlow.scrolled) ...[
+              row(
+                'Top margin',
+                sw(s.scrollTop, (v) => set(() => s.scrollTop = v)),
+                changed: s.scrollTop != d.scrollTop,
+                reset: () => set(() => s.scrollTop = d.scrollTop),
+              ),
+              row(
+                'Bottom margin',
+                sw(s.scrollBottom, (v) => set(() => s.scrollBottom = v)),
+                changed: s.scrollBottom != d.scrollBottom,
+                reset: () => set(() => s.scrollBottom = d.scrollBottom),
+              ),
+            ],
+            row(
+              'Animation',
+              sw(s.animate, (v) => set(() => s.animate = v)),
+              changed: s.animate != d.animate,
+              reset: () => set(() => s.animate = d.animate),
+            ),
+          ],
+          if (isPhone) ...[
+            row(
+              'Clear of the notch',
+              sw(s.clearNotch, (v) => set(() => s.clearNotch = v)),
+              changed: s.clearNotch != d.clearNotch,
+              reset: () => set(() => s.clearNotch = d.clearNotch),
+            ),
+            row(
+              'Clear of the status line',
+              sw(s.clearStatus, (v) => set(() => s.clearStatus = v)),
+              changed: s.clearStatus != d.clearStatus,
+              reset: () => set(() => s.clearStatus = d.clearStatus),
+            ),
+          ],
+          row(
+            'Controls size',
+            NumStep(
+              value: (Look.I.readerScale * 100).roundToDouble(),
+              step: 5,
+              min: 60,
+              max: 200,
+              title: 'Controls size (%)',
+              format: (v) => '${v.round()}%',
+              onChanged: (v) {
+                Look.I.readerScale = v / 100;
+                Look.I.save();
+                setState(() {});
+              },
+            ),
+            changed: (Look.I.readerScale - Look.defaultReaderScale).abs() > 0.001,
+            reset: () {
+              Look.I.readerScale = Look.defaultReaderScale;
+              Look.I.save();
+              setState(() {});
+            },
+          ),
+          if (!isPhone)
+            row(
+              'Mouse ◀ ▶',
+              Seg<String>(
+                value: Settings.I.mouseInReader,
+                items: const [('pages', 'Turn pages'), ('leave', 'Back leaves')],
+                onChanged: (v) {
+                  Settings.I.mouseInReader = v;
+                  Settings.I.save();
+                  setState(() {});
+                },
+              ),
+              changed: Settings.I.mouseInReader != 'pages',
+              reset: () {
+                Settings.I.mouseInReader = 'pages';
+                Settings.I.save();
+                setState(() {});
+              },
+            ),
+          _defaultsFooter(
+            'Changes here are kept for this book.',
+            ReadingStyle.textKeys,
+            except: true,
+            alsoReset: () {
+              Settings.I.pdfDarkPages = false;
+              Settings.I.pdfCrop = false;
+            },
+          ),
+        ],
+      ),
     );
   }
 
   /// Text & spacing: the font, sizes, spacing and margins.
   Widget _textPanel() {
-    final s = Settings.I.style;
-    final d = Settings.defaults.style;
+    final s = st;
+    final d = Settings.I.style;
     final set = _set;
     final row = _row;
     if (isPdf) {
       return EmptyState(icon: Icons.format_size, text: 'A PDF\'s text is fixed by the PDF itself.');
     }
     String pct(double v) => '${v == v.roundToDouble() ? v.round() : v.toStringAsFixed(1)}%';
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(14, 0, 8, 14),
-      children: [
-        row(
-          'Font',
-          Drop<String>(
-            value: s.font,
-            width: _narrowPanel ? 180 : 200,
-            items: [for (final f in readingFonts) (f, fontLabel(f))],
-            onChanged: (v) => set(() => s.font = v),
-          ),
-          changed: s.font != d.font,
-          reset: () => set(() => s.font = d.font),
-        ),
-        row(
-          'Text size',
-          NumStep(
-            value: s.size,
-            step: 0.5,
-            min: 10,
-            max: 48,
-            title: 'Text size',
-            onChanged: (v) => set(() => s.size = v),
-          ),
-          changed: s.size != d.size,
-          reset: () => set(() => s.size = d.size),
-        ),
-        row(
-          'Line spacing',
-          NumStep(
-            value: s.spacing,
-            step: 0.05,
-            min: 0.8,
-            max: 3,
-            title: 'Line spacing',
-            format: (v) => v.toStringAsFixed(2),
-            onChanged: (v) => set(() => s.spacing = v),
-          ),
-          changed: s.spacing != d.spacing,
-          reset: () => set(() => s.spacing = d.spacing),
-        ),
-        row(
-          'Word spacing',
-          NumStep(
-            value: s.wordSpacing,
-            step: 0.5,
-            min: -2,
-            max: 20,
-            title: 'Extra space between words (px)',
-            onChanged: (v) => set(() => s.wordSpacing = v),
-          ),
-          changed: s.wordSpacing != d.wordSpacing,
-          reset: () => set(() => s.wordSpacing = d.wordSpacing),
-        ),
-        row(
-          'Paragraph spacing',
-          NumStep(
-            value: s.paraSpacing,
-            step: 0.05,
-            min: 0,
-            max: 3,
-            title: 'Space after each paragraph (lines)',
-            format: (v) => v.toStringAsFixed(2),
-            onChanged: (v) => set(() => s.paraSpacing = v),
-          ),
-          changed: s.paraSpacing != d.paraSpacing,
-          reset: () => set(() => s.paraSpacing = d.paraSpacing),
-        ),
-        row(
-          'Indent paragraphs',
-          _sw(s.indent, (v) => set(() => s.indent = v)),
-          changed: s.indent != d.indent,
-          reset: () => set(() => s.indent = d.indent),
-        ),
-        row(
-          'Side margins',
-          NumStep(
-            value: s.marginXPct,
-            step: 0.5,
-            min: 0,
-            max: 30,
-            title: 'Side margins (% of the width)',
-            format: pct,
-            onChanged: (v) => set(() => s.marginXPct = v),
-          ),
-          changed: s.marginXPct != d.marginXPct,
-          reset: () => set(() => s.marginXPct = d.marginXPct),
-        ),
-        row(
-          'Top & bottom margins',
-          NumStep(
-            value: s.marginYPct,
-            step: 0.5,
-            min: 0,
-            max: 30,
-            title: 'Top and bottom margins (% of the height)',
-            format: pct,
-            onChanged: (v) => set(() => s.marginYPct = v),
-          ),
-          changed: s.marginYPct != d.marginYPct,
-          reset: () => set(() => s.marginYPct = d.marginYPct),
-        ),
-        row(
-          'Book\'s own styles',
-          _sw(s.publisherStyles, (v) => set(() => s.publisherStyles = v)),
-          changed: s.publisherStyles != d.publisherStyles,
-          reset: () => set(() => s.publisherStyles = d.publisherStyles),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(child: Text('Hold − or + to keep going; tap a number to type it.', style: ts(size: 11.5, c: tk.faint))),
-            Btn.ghost(
-              'Reset',
-              icon: Icons.restart_alt,
-              dense: true,
-              onTap: () => set(() {
-                s
-                  ..font = d.font
-                  ..size = d.size
-                  ..spacing = d.spacing
-                  ..wordSpacing = d.wordSpacing
-                  ..paraSpacing = d.paraSpacing
-                  ..indent = d.indent
-                  ..marginXPct = d.marginXPct
-                  ..marginYPct = d.marginYPct
-                  ..publisherStyles = d.publisherStyles;
-              }),
+    return Smooth(
+      builder: (sc) => ListView(
+        controller: sc,
+        padding: const EdgeInsets.fromLTRB(14, 0, 8, 14),
+        children: [
+          row(
+            'Font',
+            Drop<String>(
+              value: s.font,
+              width: _narrowPanel ? 180 : 200,
+              items: [for (final f in readingFonts) (f, fontLabel(f))],
+              onChanged: (v) => set(() => s.font = v),
             ),
-          ],
-        ),
-      ],
+            changed: s.font != d.font,
+            reset: () => set(() => s.font = d.font),
+          ),
+          row(
+            'Text size',
+            NumStep(value: s.size, step: 0.5, min: 10, max: 48, title: 'Text size', onChanged: (v) => set(() => s.size = v)),
+            changed: s.size != d.size,
+            reset: () => set(() => s.size = d.size),
+          ),
+          row(
+            'Line spacing',
+            NumStep(
+              value: s.spacing,
+              step: 0.05,
+              min: 0.8,
+              max: 3,
+              title: 'Line spacing',
+              format: (v) => v.toStringAsFixed(2),
+              onChanged: (v) => set(() => s.spacing = v),
+            ),
+            changed: s.spacing != d.spacing,
+            reset: () => set(() => s.spacing = d.spacing),
+          ),
+          row(
+            'Word spacing',
+            NumStep(
+              value: s.wordSpacing,
+              step: 0.5,
+              min: -2,
+              max: 20,
+              title: 'Extra space between words (px)',
+              onChanged: (v) => set(() => s.wordSpacing = v),
+            ),
+            changed: s.wordSpacing != d.wordSpacing,
+            reset: () => set(() => s.wordSpacing = d.wordSpacing),
+          ),
+          row(
+            'Paragraph spacing',
+            NumStep(
+              value: s.paraSpacing,
+              step: 0.05,
+              min: 0,
+              max: 3,
+              title: 'Space after each paragraph (lines)',
+              format: (v) => v.toStringAsFixed(2),
+              onChanged: (v) => set(() => s.paraSpacing = v),
+            ),
+            changed: s.paraSpacing != d.paraSpacing,
+            reset: () => set(() => s.paraSpacing = d.paraSpacing),
+          ),
+          row(
+            'Indent paragraphs',
+            _sw(s.indent, (v) => set(() => s.indent = v)),
+            changed: s.indent != d.indent,
+            reset: () => set(() => s.indent = d.indent),
+          ),
+          row(
+            'Side margins',
+            NumStep(
+              value: s.marginXPct,
+              step: 0.5,
+              min: 0,
+              max: 30,
+              title: 'Side margins (% of the width)',
+              format: pct,
+              onChanged: (v) => set(() => s.marginXPct = v),
+            ),
+            changed: s.marginXPct != d.marginXPct,
+            reset: () => set(() => s.marginXPct = d.marginXPct),
+          ),
+          row(
+            'Top & bottom margins',
+            NumStep(
+              value: s.marginYPct,
+              step: 0.5,
+              min: 0,
+              max: 30,
+              title: 'Top and bottom margins (% of the height)',
+              format: pct,
+              onChanged: (v) => set(() => s.marginYPct = v),
+            ),
+            changed: s.marginYPct != d.marginYPct,
+            reset: () => set(() => s.marginYPct = d.marginYPct),
+          ),
+          row(
+            'Book\'s own styles',
+            _sw(s.publisherStyles, (v) => set(() => s.publisherStyles = v)),
+            changed: s.publisherStyles != d.publisherStyles,
+            reset: () => set(() => s.publisherStyles = d.publisherStyles),
+          ),
+          _defaultsFooter(
+            'Changes here are kept for this book. Hold − or + to keep going; tap a number to type it.',
+            ReadingStyle.textKeys,
+          ),
+        ],
+      ),
     );
   }
 

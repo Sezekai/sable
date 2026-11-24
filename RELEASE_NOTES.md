@@ -1,34 +1,12 @@
-Sable 1.4.0
+Sable 1.4.1
 
-Library and books
-- Sable can be the default app for ebooks on Windows (Settings → Opening ebooks). Double-clicking an EPUB, MOBI or AZW3 opens it in the reader. Books in the library are tracked as usual; books outside it show in History and resume where you left off without being added, and if you add them later their progress is already there.
-- One entry per book: an EPUB and PDF of the same book show once (as the EPUB), with "Read the PDF" on its page. Progress is shared, and with several versions you choose the default. Combine two copies by hand, or separate them again.
-- Make a series from ticked books, then set its name, volume order, description and cover.
-- Missing descriptions can be looked up online (Google Books, then Open Library) for everything from Settings, from a book or series page, or for ticked books. Descriptions can be written by hand and covers changed by pasting, dragging in, or choosing a file.
-- Bigger book and series pages: a larger cover, and two columns beside it when the window is wide. Series pages use a Select button instead of tick boxes.
-- Covers are 1.5:1 everywhere. Grid titles are smaller and use two lines when needed (hiding the author then). The downloaded badge is gone; the series and PDF badges are small and see-through in the corner.
+- Double-clicking an ebook now opens it straight into the reader. The library isn't shown first; it loads in the background (and the folder scan waits a few seconds so the book comes first). A book Sable hasn't seen before opens at once, and its title, details and cover are read just after.
+- Fixed: text size didn't stick. Some books came up much too large, got smaller when changed, then jumped back on the next page. Sable was rewriting its own text size along with the book's.
+- Text size now means the same in every book. Sable measures the size most of a book's text is drawn at and matches it to your setting, so 20 looks like 20 whatever the book's own styles say. Headings and small print keep their proportions.
+- Each book keeps its own settings. A change made while reading applies to that book only, and it's still there next time you open it. At the bottom of both reader panels, "Save as default for all books" makes the settings the default for every book you haven't changed, and "Use the default" puts a book back on it.
+- Page width: with one page (or in scroll mode) on the PC, choose how much of the window the page takes, in 5% steps.
+- Scrolling was rebuilt. In books it's smooth, doesn't get stuck, and a further push at the end of a chapter moves on to the next (or back to the previous one). The "Scroll distance" setting is gone. In scroll mode you can choose whether to keep the top margin and the bottom margin.
+- Smoother scrolling with the mouse wheel in the library, book and series pages, history, stats, settings and the reader's lists.
+- The mouse pointer now hides when it stops over the page (it didn't before, because the book's view kept showing it). It stays visible over the controls.
 
-Reader
-- New fonts: Segoe UI, Open Sans, PT Serif, Domine, Lato and Arbutus Slab.
-- New: word spacing, paragraph spacing, paragraph indents, and alignment (left, centre, right, justify). Every option uses − and + buttons with .5 and 5% steps; tap a number to type it.
-- "Same top line" keeps text starting on the same line on every page, even after a heading, blank lines or a new chapter.
-- The reader menus are split: "Text and spacing" (A) for the text, and "Settings" (S) for theme, pages, colour, alignment, turning, animation, controls and mouse.
-- Fixed: some books ignored text size and other changes.
-- Fixed: search in the book didn't work.
-
-Look
-- Starlight is now pure black with a starry sky, like Ginkgo's Deep space.
-- Highlights, toggles and the selected tab use the logo's purple-to-pink gradient.
-- Settings are in sections: a column on the left on the PC, a list to tap into on the phone.
-- Stats fill the width, two cards a row on a folded phone, and the period buttons fit.
-
-Phone
-- Reader: compact top bar right under the notch with search, contents, settings and text & spacing, plus More for the rest. Each menu opens alone on the right with an X. Options keep text clear of the notch and of the bottom status line (also in scroll mode). PC-only options are gone, and the bottom text expands when tapped.
-- Book pages: cover on the left and details on the right, a large full-width Read button, and nothing runs off the screen.
-- Library: tap Library again to pick a tag (for the section you're in); the X goes back to all. The folders menu moved to Filters only, and the top buttons are bigger.
-- A thin progress line above the tabs replaces the sync/download bar; details are in Downloads and Settings.
-- Tab labels stay on one line, history covers are bigger, and the empty space at the top is gone.
-
-Not yet on the phone: editing covers, descriptions, combining and series edits are done on the PC (they sync to the phone). Android doesn't offer Sable in "Open with" yet.
-
-PC: replace the `App` folder in `E:\Pictures\Sable\` with the new one. Phone: install `Sable-v1.4.0-android.apk` over the old one.
+PC: replace the `App` folder in `E:\Pictures\Sable\` with the new one. Phone: install `Sable-v1.4.1-android.apk` over the old one.

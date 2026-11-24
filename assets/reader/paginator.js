@@ -803,6 +803,28 @@ export class Paginator extends HTMLElement {
         element[scrollProp] = Math.max(min, Math.min(max,
             element[scrollProp] + delta))
     }
+    // Sable: scroll freely in scrolled mode (scrollBy only reaches one screen
+    // from the last stop). Keeps the bounds right for keys and page turns.
+    freeScroll(delta) {
+        const el = this.#container
+        const { scrollProp, size } = this
+        const max = Math.max(0, (this.#vertical ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight))
+        const cur = Math.abs(el[scrollProp])
+        const next = Math.max(0, Math.min(max, cur + delta))
+        if (next !== cur) el[scrollProp] = this.#vertical ? -next : next
+        this.#scrollBounds = [el[scrollProp], this.atStart ? 0 : size, this.atEnd ? 0 : size]
+        return next - cur
+    }
+    // -1 at the top of this part of the book, 1 at the bottom, 2 if it all fits, else 0.
+    get scrollEdge() {
+        const el = this.#container
+        const max = Math.max(0, this.#vertical ? el.scrollWidth - el.clientWidth : el.scrollHeight - el.clientHeight)
+        const cur = Math.abs(el[this.scrollProp])
+        if (max <= 1) return 2
+        if (cur <= 1) return -1
+        if (cur >= max - 1) return 1
+        return 0
+    }
     snap(vx, vy) {
         const velocity = this.#vertical ? vy : vx
         const [offset, a, b] = this.#scrollBounds

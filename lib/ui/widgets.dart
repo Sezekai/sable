@@ -1119,3 +1119,59 @@ class _ColourDialogState extends State<_ColourDialog> {
     );
   }
 }
+
+
+/// Smooth mouse-wheel scrolling: each notch adds to where the list is heading,
+/// and it eases there instead of jumping. Touch and trackpads work as usual.
+class SmoothScroll extends ScrollController {
+  SmoothScroll({this.speed = 1.6, this.ctrlZooms = false});
+  final double speed;
+
+  /// Ctrl+wheel is used for something else (such as cover size).
+  final bool ctrlZooms;
+
+  @override
+  ScrollPosition createScrollPosition(ScrollPhysics physics, ScrollContext context, ScrollPosition? oldPosition) =>
+      _SmoothPosition(this, physics: physics, context: context, oldPosition: oldPosition, debugLabel: debugLabel);
+}
+
+class _SmoothPosition extends ScrollPositionWithSingleContext {
+  _SmoothPosition(this.owner, {required super.physics, required super.context, super.oldPosition, super.debugLabel});
+  final SmoothScroll owner;
+  double? _goal;
+
+  @override
+  void pointerScroll(double delta) {
+    if (delta == 0) return;
+    if (owner.ctrlZooms && HardwareKeyboard.instance.isControlPressed) return;
+    final heading = _goal != null && activity is DrivenScrollActivity;
+    final from = heading ? _goal! : pixels;
+    // Changing direction starts from where it is now.
+    final base = heading && (delta > 0) != (_goal! > pixels) ? pixels : from;
+    final goal = (base + delta * owner.speed).clamp(minScrollExtent, maxScrollExtent);
+    if ((goal - pixels).abs() < 0.5) return;
+    _goal = goal;
+    animateTo(goal, duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
+  }
+}
+
+/// Gives a scrollable its own [SmoothScroll] (kept across rebuilds).
+class Smooth extends StatefulWidget {
+  const Smooth({super.key, required this.builder, this.speed = 1.6});
+  final Widget Function(ScrollController controller) builder;
+  final double speed;
+  @override
+  State<Smooth> createState() => _SmoothState();
+}
+
+class _SmoothState extends State<Smooth> {
+  late final SmoothScroll c = SmoothScroll(speed: widget.speed);
+  @override
+  void dispose() {
+    c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(c);
+}

@@ -404,6 +404,32 @@ CREATE TABLE IF NOT EXISTS series_info(
 PRAGMA user_version = 2;
 ''');
     }
+    if (v < 3) {
+      // 1.4.1: each book's own reader settings (kept on each device, not synced).
+      raw.execute('''
+CREATE TABLE IF NOT EXISTS book_styles(book_id INTEGER PRIMARY KEY, style TEXT NOT NULL);
+PRAGMA user_version = 3;
+''');
+    }
+  }
+
+  /// A book's own reader settings (JSON), or null when it follows the default.
+  Map<String, dynamic>? bookStyle(int bookId) {
+    final r = raw.select('SELECT style FROM book_styles WHERE book_id=?', [bookId]);
+    if (r.isEmpty) return null;
+    try {
+      return jsonDecode(r.first['style'] as String) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void saveBookStyle(int bookId, Map<String, dynamic>? style) {
+    if (style == null) {
+      raw.execute('DELETE FROM book_styles WHERE book_id=?', [bookId]);
+    } else {
+      raw.execute('INSERT OR REPLACE INTO book_styles(book_id, style) VALUES(?,?)', [bookId, jsonEncode(style)]);
+    }
   }
 
   // ---------- series details ----------

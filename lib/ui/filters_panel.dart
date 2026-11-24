@@ -33,9 +33,8 @@ class _FiltersPanelState extends State<FiltersPanel> {
   @override
   Widget build(BuildContext context) {
     final artistCounts = Library.I.authorCounts();
-    final artists =
-        artistCounts.keys.where((a) => artistSearch.isEmpty || a.toLowerCase().contains(artistSearch.toLowerCase())).toList()
-          ..sort((a, b) => artistCounts[b]!.compareTo(artistCounts[a]!));
+    final artists = artistCounts.keys.where((a) => artistSearch.isEmpty || a.toLowerCase().contains(artistSearch.toLowerCase())).toList()
+      ..sort((a, b) => artistCounts[b]!.compareTo(artistCounts[a]!));
     final tags = Library.I.tags;
     return Align(
       alignment: Alignment.topRight,
@@ -64,185 +63,175 @@ class _FiltersPanelState extends State<FiltersPanel> {
                       ),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text(
-                          'Click once for the filter, again for its opposite, again to clear.',
-                          style: ts(c: tk.faint, size: 12),
-                        ),
+                        child: Text('Click once for the filter, again for its opposite, again to clear.', style: ts(c: tk.faint, size: 12)),
                       ),
                       IconBtn(Icons.close, onTap: () => Navigator.pop(context)),
                     ],
                   ),
                   const SizedBox(height: 10),
                   Expanded(
-                    child: ListView(
-                      children: [
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            _tri('Read', 'Unread', f.read, (v) => f.read = v),
-                            _tri('In progress', 'Not started or finished', f.inProgress, (v) => f.inProgress = v),
-                            _tri('Favourite', 'Not favourite', f.favourite, (v) => f.favourite = v),
-                            _tri('Rated', 'Not rated', f.rated, (v) => f.rated = v),
-                            _tri('In a series', 'Single book', f.series, (v) => f.series = v),
-                            _tri('Light novels', 'Books', f.ln, (v) => f.ln = v),
-                            _tri('PDF only', 'Not PDF', f.pdf, (v) => f.pdf = v),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        _range(
-                          'Rating',
-                          f.ratingRange,
-                          (v) => f.ratingRange = v,
-                          RangeValues(f.minRating, f.maxRating),
-                          0.5,
-                          5,
-                          9,
-                          (r) {
+                    child: Smooth(
+                      builder: (sc) => ListView(
+                        controller: sc,
+                        children: [
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              _tri('Read', 'Unread', f.read, (v) => f.read = v),
+                              _tri('In progress', 'Not started or finished', f.inProgress, (v) => f.inProgress = v),
+                              _tri('Favourite', 'Not favourite', f.favourite, (v) => f.favourite = v),
+                              _tri('Rated', 'Not rated', f.rated, (v) => f.rated = v),
+                              _tri('In a series', 'Single book', f.series, (v) => f.series = v),
+                              _tri('Light novels', 'Books', f.ln, (v) => f.ln = v),
+                              _tri('PDF only', 'Not PDF', f.pdf, (v) => f.pdf = v),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          _range('Rating', f.ratingRange, (v) => f.ratingRange = v, RangeValues(f.minRating, f.maxRating), 0.5, 5, 9, (r) {
                             f.minRating = r.start;
                             f.maxRating = r.end;
-                          },
-                          (r) => '${r.start} to ${r.end} stars',
-                        ),
-                        _range(
-                          'Length',
-                          f.lengthRange,
-                          (v) => f.lengthRange = v,
-                          RangeValues(f.minLength.toDouble(), f.maxLength.toDouble()),
-                          0,
-                          1500,
-                          150,
-                          (r) {
-                            f.minLength = r.start.round();
-                            f.maxLength = r.end.round();
-                          },
-                          (r) => '${r.start.round()} to ${r.end.round()} pages',
-                        ),
-                        _single(
-                          'Times read',
-                          f.readCount,
-                          (v) => f.readCount = v,
-                          f.readCountMin.toDouble(),
-                          1,
-                          20,
-                          (v) => f.readCountMin = v.round(),
-                          (v) => 'Read ${v.round()}+ times',
-                          'Read fewer times',
-                        ),
-                        _single(
-                          'Read recently',
-                          f.readIn,
-                          (v) => f.readIn = v,
-                          f.readInDays.toDouble(),
-                          1,
-                          365,
-                          (v) => f.readInDays = v.round(),
-                          (v) => 'Read in the last ${v.round()} days',
-                          'Not read in that time',
-                        ),
-                        if (Settings.I.folders.length > 1) ...[
-                          const SizedBox(height: 14),
-                          Text(
-                            'Library folders',
-                            style: ts(w: FontWeight.w600, c: tk.sec),
+                          }, (r) => '${r.start} to ${r.end} stars'),
+                          _range(
+                            'Length',
+                            f.lengthRange,
+                            (v) => f.lengthRange = v,
+                            RangeValues(f.minLength.toDouble(), f.maxLength.toDouble()),
+                            0,
+                            1500,
+                            150,
+                            (r) {
+                              f.minLength = r.start.round();
+                              f.maxLength = r.end.round();
+                            },
+                            (r) => '${r.start.round()} to ${r.end.round()} pages',
                           ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: [
-                              for (final lf in Settings.I.folders)
-                                Pill(
-                                  '${f.excludeFolders.contains(lf.path) ? 'not ' : ''}${p.basename(lf.path)}',
-                                  active: f.folders.contains(lf.path) || f.excludeFolders.contains(lf.path),
-                                  color: f.excludeFolders.contains(lf.path) ? tk.danger : null,
-                                  onTap: () => _set(() {
-                                    if (f.folders.contains(lf.path)) {
-                                      f.folders.remove(lf.path);
-                                      f.excludeFolders.add(lf.path);
-                                    } else if (f.excludeFolders.contains(lf.path)) {
-                                      f.excludeFolders.remove(lf.path);
-                                    } else {
-                                      f.folders.add(lf.path);
-                                    }
-                                  }),
-                                ),
-                            ],
+                          _single(
+                            'Times read',
+                            f.readCount,
+                            (v) => f.readCount = v,
+                            f.readCountMin.toDouble(),
+                            1,
+                            20,
+                            (v) => f.readCountMin = v.round(),
+                            (v) => 'Read ${v.round()}+ times',
+                            'Read fewer times',
                           ),
-                        ],
-                        if (tags.isNotEmpty) ...[
-                          const SizedBox(height: 14),
-                          Text(
-                            'Tags',
-                            style: ts(w: FontWeight.w600, c: tk.sec),
+                          _single(
+                            'Read recently',
+                            f.readIn,
+                            (v) => f.readIn = v,
+                            f.readInDays.toDouble(),
+                            1,
+                            365,
+                            (v) => f.readInDays = v.round(),
+                            (v) => 'Read in the last ${v.round()} days',
+                            'Not read in that time',
                           ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: [
-                              for (final t in tags)
-                                Pill(
-                                  f.excludeTags.contains(t.id) ? 'not ${t.name}' : t.name,
-                                  active: f.tags.contains(t.id) || f.excludeTags.contains(t.id),
-                                  color: f.excludeTags.contains(t.id) ? tk.danger : Color(t.color),
-                                  onTap: () => _set(() {
-                                    if (f.tags.contains(t.id)) {
-                                      f.tags.remove(t.id);
-                                      f.excludeTags.add(t.id);
-                                    } else if (f.excludeTags.contains(t.id)) {
-                                      f.excludeTags.remove(t.id);
-                                    } else {
-                                      f.tags.add(t.id);
-                                    }
-                                  }),
-                                ),
-                            ],
-                          ),
-                        ],
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
+                          if (Settings.I.folders.length > 1) ...[
+                            const SizedBox(height: 14),
                             Text(
-                              'Authors',
+                              'Library folders',
                               style: ts(w: FontWeight.w600, c: tk.sec),
                             ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Field(
-                                hint: 'Find an author',
-                                icon: Icons.search,
-                                onChanged: (v) => setState(() => artistSearch = v),
-                              ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                for (final lf in Settings.I.folders)
+                                  Pill(
+                                    '${f.excludeFolders.contains(lf.path) ? 'not ' : ''}${p.basename(lf.path)}',
+                                    active: f.folders.contains(lf.path) || f.excludeFolders.contains(lf.path),
+                                    color: f.excludeFolders.contains(lf.path) ? tk.danger : null,
+                                    onTap: () => _set(() {
+                                      if (f.folders.contains(lf.path)) {
+                                        f.folders.remove(lf.path);
+                                        f.excludeFolders.add(lf.path);
+                                      } else if (f.excludeFolders.contains(lf.path)) {
+                                        f.excludeFolders.remove(lf.path);
+                                      } else {
+                                        f.folders.add(lf.path);
+                                      }
+                                    }),
+                                  ),
+                              ],
                             ),
                           ],
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: [
-                            for (final a in artists.take(80))
-                              Pill(
-                                '${f.excludeAuthors.contains(a) ? 'not ' : ''}$a  ${artistCounts[a]}',
-                                active: f.authors.contains(a) || f.excludeAuthors.contains(a),
-                                color: f.excludeAuthors.contains(a) ? tk.danger : null,
-                                onTap: () => _set(() {
-                                  if (f.authors.contains(a)) {
-                                    f.authors.remove(a);
-                                    f.excludeAuthors.add(a);
-                                  } else if (f.excludeAuthors.contains(a)) {
-                                    f.excludeAuthors.remove(a);
-                                  } else {
-                                    f.authors.add(a);
-                                  }
-                                }),
-                              ),
-                            if (artists.length > 80)
-                              Text('${artists.length - 80} more; type to find them', style: ts(c: tk.faint, size: 12)),
+                          if (tags.isNotEmpty) ...[
+                            const SizedBox(height: 14),
+                            Text(
+                              'Tags',
+                              style: ts(w: FontWeight.w600, c: tk.sec),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 6,
+                              children: [
+                                for (final t in tags)
+                                  Pill(
+                                    f.excludeTags.contains(t.id) ? 'not ${t.name}' : t.name,
+                                    active: f.tags.contains(t.id) || f.excludeTags.contains(t.id),
+                                    color: f.excludeTags.contains(t.id) ? tk.danger : Color(t.color),
+                                    onTap: () => _set(() {
+                                      if (f.tags.contains(t.id)) {
+                                        f.tags.remove(t.id);
+                                        f.excludeTags.add(t.id);
+                                      } else if (f.excludeTags.contains(t.id)) {
+                                        f.excludeTags.remove(t.id);
+                                      } else {
+                                        f.tags.add(t.id);
+                                      }
+                                    }),
+                                  ),
+                              ],
+                            ),
                           ],
-                        ),
-                      ],
+                          const SizedBox(height: 14),
+                          Row(
+                            children: [
+                              Text(
+                                'Authors',
+                                style: ts(w: FontWeight.w600, c: tk.sec),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Field(
+                                  hint: 'Find an author',
+                                  icon: Icons.search,
+                                  onChanged: (v) => setState(() => artistSearch = v),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              for (final a in artists.take(80))
+                                Pill(
+                                  '${f.excludeAuthors.contains(a) ? 'not ' : ''}$a  ${artistCounts[a]}',
+                                  active: f.authors.contains(a) || f.excludeAuthors.contains(a),
+                                  color: f.excludeAuthors.contains(a) ? tk.danger : null,
+                                  onTap: () => _set(() {
+                                    if (f.authors.contains(a)) {
+                                      f.authors.remove(a);
+                                      f.excludeAuthors.add(a);
+                                    } else if (f.excludeAuthors.contains(a)) {
+                                      f.excludeAuthors.remove(a);
+                                    } else {
+                                      f.authors.add(a);
+                                    }
+                                  }),
+                                ),
+                              if (artists.length > 80)
+                                Text('${artists.length - 80} more; type to find them', style: ts(c: tk.faint, size: 12)),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                   Row(

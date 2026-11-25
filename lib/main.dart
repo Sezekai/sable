@@ -152,11 +152,18 @@ Future<void> main(List<String> args) async {
     );
     await windowManager.waitUntilReadyToShow(opts, () async {
       // Opens maximised on the screen it was opened from (where the mouse is).
-      if (!WinScreen.moveToPointerScreen() && ws['x'] != null) {
+      if ((selftest || !WinScreen.moveToPointerScreen()) && ws['x'] != null) {
         await windowManager.setPosition(Offset((ws['x'] as num).toDouble(), (ws['y'] as num).toDouble()));
       }
-      await windowManager.maximize();
+      // Maximised once it's shown (a hidden window ignores it).
       await windowManager.show();
+      // (The self-test keeps a fixed size, so its screenshots compare.)
+      if (!selftest) {
+        await windowManager.maximize();
+        Future<void>.delayed(const Duration(milliseconds: 300), () async {
+          if (!await windowManager.isMaximized()) await windowManager.maximize();
+        });
+      }
       await windowManager.focus();
     });
     windowManager.addListener(_WindowKeeper(marker));

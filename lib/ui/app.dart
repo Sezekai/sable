@@ -417,7 +417,8 @@ class TitleBar extends StatelessWidget {
         children: [
           const SizedBox(width: 12),
           Text('Sable', style: ts(size: 12, w: FontWeight.w600)),
-          Flexible(
+          // Takes the free space, so the buttons stay at the right edge.
+          Expanded(
             child: ListenableBuilder(
               listenable: Nav.I,
               builder: (_, _) => Text(
@@ -428,7 +429,6 @@ class TitleBar extends StatelessWidget {
               ),
             ),
           ),
-          const Spacer(),
           if (label == null) const StatusPills(),
           if (isDesktop) const WindowButtons(),
         ],

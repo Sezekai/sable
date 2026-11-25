@@ -20,6 +20,7 @@ import 'core/samples.dart';
 import 'core/platform.dart';
 import 'core/server.dart';
 import 'core/settings.dart';
+import 'core/win_screen.dart';
 import 'core/sync_client.dart';
 import 'core/sync_server.dart';
 import 'ui/app.dart';
@@ -150,10 +151,11 @@ Future<void> main(List<String> args) async {
       backgroundColor: Look.I.t.ground,
     );
     await windowManager.waitUntilReadyToShow(opts, () async {
-      if (ws['x'] != null) {
+      // Opens maximised on the screen it was opened from (where the mouse is).
+      if (!WinScreen.moveToPointerScreen() && ws['x'] != null) {
         await windowManager.setPosition(Offset((ws['x'] as num).toDouble(), (ws['y'] as num).toDouble()));
       }
-      if (ws['max'] == true) await windowManager.maximize();
+      await windowManager.maximize();
       await windowManager.show();
       await windowManager.focus();
     });
@@ -164,8 +166,9 @@ Future<void> main(List<String> args) async {
   instance?.listen((s) {
     final buf = <int>[];
     s.listen(buf.addAll, onDone: () async {
+      // Brought back to the front as it was (minimised: back to how it was before).
+      if (await windowManager.isMinimized()) await windowManager.restore();
       await windowManager.show();
-      await windowManager.restore();
       await windowManager.focus();
       final msg = utf8.decode(buf, allowMalformed: true);
       if (msg.startsWith('open:')) unawaited(_openFile(msg.substring(5)));
@@ -299,8 +302,13 @@ class _WindowKeeper with WindowListener {
   @override
   void onWindowUnmaximize() => _remember();
 
+  bool _closing = false;
+
   @override
   void onWindowClose() async {
+    // Asked more than once (several close requests): only the first counts.
+    if (_closing) return;
+    _closing = true;
     // The window goes at once; saving happens behind it.
     try {
       await windowManager.hide();
@@ -323,8 +331,9 @@ class _WindowKeeper with WindowListener {
     await AppLog.I.flush();
     // Everything is saved: end the process straight away rather than waiting
     // for the book engine (WebView2), the folder watchers and background work
-    // to wind down one by one, which is what made closing slow.
-    exit(0);
+    // to wind down one by one, which is what made closing slow. Ended without
+    // the libraries' own shutdown: the book engine's could crash in it.
+    WinScreen.terminate(0);
   }
 }
 

@@ -843,7 +843,11 @@ class ReaderPageState extends State<ReaderPage> {
               },
               child: MouseRegion(
                 cursor: cursorHidden ? SystemMouseCursors.none : MouseCursor.defer,
-                child: Stack(
+                child: Column(
+                  children: [
+                    // The window's own bar (move, minimise, maximise, close), as in the library.
+                    if (!isPhone && !Nav.I.fullScreen) TitleBar(label: book.displayTitle),
+                    Expanded(child: Stack(
                   children: [
                     // The book itself is drawn at the screen's own size, so it stays sharp.
                     // A phone can keep the text clear of the camera notch and the status line.
@@ -882,6 +886,8 @@ class ReaderPageState extends State<ReaderPage> {
                         ),
                       ),
                     ),
+                  ],
+                )),
                   ],
                 ),
               ),

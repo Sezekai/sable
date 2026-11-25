@@ -1,10 +1,8 @@
-Sable 1.4.3
+Sable 1.4.4
 
-- Fixed: opening a book by double-clicking it could crash Sable. The book engine was being started before the window was drawn, which crashed the graphics driver. It now starts just after.
-- Fixed: finding descriptions stopped with "Too many requests". Google Books limits free lookups, so Sable now asks Apple Books first (which has most light novels), then Google Books, then Open Library. A source that says it's busy is skipped for a while instead of stopping the job. Matching also checks the volume number, so Vol. 2 doesn't get Vol. 1's description.
-- The keyboard shortcuts page lost its yellow underlines, and each section has a heading line and a divider.
-- Starlight: Settings → Look → Stars sets how many stars there are (0% to 400%). The stars now also show behind the book in the reader, where the same option is in the reader's Settings.
-- Scrolling moves half as far for each turn of the mouse wheel, in books and everywhere else.
-- Scroll mode: with the top or bottom margin switched off, the margin still shows at the start and end of each chapter. Moving on to the next chapter now takes about five more turns of the wheel at the end, so it doesn't happen by accident.
+- Fixed: an occasional crash when opening a book. The crash reports point at the graphics driver, at the moment the book engine starts while the window lay across both screens. Sable's window now always opens on one screen, which stops that from happening.
+- Fixed: Sable could crash while closing (inside the book engine's own shutdown). It now ends straight away once everything is saved, and a close requested twice is only handled once.
+- Sable opens maximised on the screen you open it from (the one the mouse pointer is on), instead of a window across both screens.
+- The reader has the same top bar as the library: drag it to move the window, double-click it to maximise or restore, and minimise, maximise and close buttons on the right. It shows the book's title, and is hidden in full screen.
 
-PC: replace the `App` folder in `E:\Pictures\Sable\` with the new one. Phone: install `Sable-v1.4.3-android.apk` over the old one.
+PC: replace the `App` folder in `E:\Pictures\Sable\` with the new one. Phone: install `Sable-v1.4.4-android.apk` over the old one.

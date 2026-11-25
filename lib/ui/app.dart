@@ -400,7 +400,10 @@ class _ShellState extends State<Shell> {
 // ---------------- title bar ----------------
 
 class TitleBar extends StatelessWidget {
-  const TitleBar({super.key});
+  const TitleBar({super.key, this.label});
+
+  /// What's shown after "Sable" (the reader: the book's title).
+  final String? label;
   @override
   Widget build(BuildContext context) {
     final isDesktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
@@ -414,12 +417,19 @@ class TitleBar extends StatelessWidget {
         children: [
           const SizedBox(width: 12),
           Text('Sable', style: ts(size: 12, w: FontWeight.w600)),
-          ListenableBuilder(
-            listenable: Nav.I,
-            builder: (_, _) => Text('  ·  ${Nav.I.screenName}', style: ts(size: 12, c: tk.faint)),
+          Flexible(
+            child: ListenableBuilder(
+              listenable: Nav.I,
+              builder: (_, _) => Text(
+                '  ·  ${label ?? Nav.I.screenName}',
+                style: ts(size: 12, c: tk.faint),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ),
           const Spacer(),
-          const StatusPills(),
+          if (label == null) const StatusPills(),
           if (isDesktop) const WindowButtons(),
         ],
       ),

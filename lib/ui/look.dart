@@ -230,6 +230,8 @@ class Look extends ChangeNotifier {
         'muted': colorHex(t.pageMuted),
         'link': colorHex(Color.lerp(acc, Colors.white, 0.25)!),
         'accent': colorHex(acc),
+        // The star field behind the page (Starlight only), as a share of the usual amount.
+        'stars': '${starlight ? stars : 0}',
       };
 
   void load() {
@@ -267,6 +269,7 @@ class Look extends ChangeNotifier {
       }
       appScale = ((m['appScale'] as num?)?.toDouble() ?? 1.0).clamp(0.8, 1.6);
       readerScale = ((m['readerScale'] as num?)?.toDouble() ?? defaultReaderScale).clamp(0.8, 2.0);
+      stars = ((m['stars'] as num?)?.toDouble() ?? 1.0).clamp(0.0, 4.0);
     } catch (_) {}
   }
 
@@ -281,10 +284,14 @@ class Look extends ChangeNotifier {
             'overrides': overrides,
             'appScale': appScale,
             'readerScale': readerScale,
+            'stars': stars,
           }));
     } catch (_) {}
     notifyListeners();
   }
+
+  /// How many stars Starlight shows: 1 is the usual amount, 0 none.
+  double stars = 1.0;
 
   void setTheme(String name) {
     theme = name;
@@ -424,12 +431,14 @@ double contrast(Color a, Color b) {
 class StarField extends StatelessWidget {
   const StarField({super.key});
   @override
-  Widget build(BuildContext context) => IgnorePointer(child: RepaintBoundary(child: CustomPaint(painter: _StarPainter(Look.I.acc))));
+  Widget build(BuildContext context) =>
+      IgnorePointer(child: RepaintBoundary(child: CustomPaint(painter: _StarPainter(Look.I.acc, Look.I.stars))));
 }
 
 class _StarPainter extends CustomPainter {
-  _StarPainter(this.c);
+  _StarPainter(this.c, this.amount);
   final Color c;
+  final double amount;
 
   // Ginkgo's "Deep space": plain stars on black, a few tinted, a few bigger with a halo.
   static const _white = Color(0xFFFFFFFF), _lav = Color(0xFFBEB4FF), _aqua = Color(0xFFA0FFEB), _warm = Color(0xFFFFE2B8);
@@ -437,7 +446,8 @@ class _StarPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rnd = math.Random(7);
-    final n = (size.width * size.height / 820 * 0.45).clamp(60, 4000).toInt();
+    if (amount <= 0) return;
+    final n = (size.width * size.height / 820 * 0.45 * amount).clamp(10, 16000).toInt();
     final p = Paint()..isAntiAlias = true;
     for (var i = 0; i < n; i++) {
       final x = rnd.nextDouble() * size.width, y = rnd.nextDouble() * size.height;
@@ -456,7 +466,7 @@ class _StarPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _StarPainter oldDelegate) => oldDelegate.c != c;
+  bool shouldRepaint(covariant _StarPainter oldDelegate) => oldDelegate.c != c || oldDelegate.amount != amount;
 }
 
 /// Draws [child] bigger or smaller, as if the window were a different size.

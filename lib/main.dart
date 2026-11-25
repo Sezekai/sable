@@ -124,7 +124,8 @@ Future<void> main(List<String> args) async {
     }
     if (startBook != null) {
       Nav.I.booting = true;
-      unawaited(ReaderWeb.init());
+      // Only the local page server: the book engine (WebView2) must not start
+      // before the window is drawn (it crashed the graphics driver).
       unawaited(LocalServer.I.start());
     }
   }
@@ -195,11 +196,14 @@ Future<void> main(List<String> args) async {
       // opens first; the library's own work starts once it's up.
       final b = startBook;
       if (b != null) {
-        final ctx = navKey.currentContext;
-        if (ctx != null) unawaited(openBook(ctx, b));
-        Future<void>.delayed(const Duration(milliseconds: 400), () {
-          Nav.I.booting = false;
-          Nav.I.changed();
+        // A moment for the window to be shown and drawn first.
+        Future<void>.delayed(const Duration(milliseconds: 250), () {
+          final ctx = navKey.currentContext;
+          if (ctx != null) unawaited(openBook(ctx, b));
+          Future<void>.delayed(const Duration(milliseconds: 450), () {
+            Nav.I.booting = false;
+            Nav.I.changed();
+          });
         });
       } else if (openPath != null) {
         unawaited(_openFile(openPath));

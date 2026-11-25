@@ -1124,7 +1124,7 @@ class _ColourDialogState extends State<_ColourDialog> {
 /// Smooth mouse-wheel scrolling: each notch adds to where the list is heading,
 /// and it eases there instead of jumping. Touch and trackpads work as usual.
 class SmoothScroll extends ScrollController {
-  SmoothScroll({this.speed = 1.6, this.ctrlZooms = false});
+  SmoothScroll({this.speed = 0.8, this.ctrlZooms = false});
   final double speed;
 
   /// Ctrl+wheel is used for something else (such as cover size).
@@ -1157,7 +1157,7 @@ class _SmoothPosition extends ScrollPositionWithSingleContext {
 
 /// Gives a scrollable its own [SmoothScroll] (kept across rebuilds).
 class Smooth extends StatefulWidget {
-  const Smooth({super.key, required this.builder, this.speed = 1.6});
+  const Smooth({super.key, required this.builder, this.speed = 0.8});
   final Widget Function(ScrollController controller) builder;
   final double speed;
   @override

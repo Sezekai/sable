@@ -360,7 +360,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 ]),
                 _group(
                   'Descriptions and covers',
-                  'Books and series without a description can have one looked up online (Google Books, then Open Library). Your own descriptions and covers are never replaced. Edit or change them on each book or series page.',
+                  'Books and series without a description can have one looked up online (Apple Books, Google Books, then Open Library). Your own descriptions and covers are never replaced. Edit or change them on each book or series page.',
                   [
                     Wrap(
                       spacing: 8,
@@ -754,6 +754,27 @@ class _SettingsPageState extends State<SettingsPage> {
         changed: themeName != 'OLED black',
         reset: () => lkI.setTheme('OLED black'),
       ),
+      if (themeName == 'Starlight')
+        _row(
+          'Stars',
+          NumStep(
+            value: (lkI.stars * 100).roundToDouble(),
+            step: 10,
+            min: 0,
+            max: 400,
+            title: 'Stars (% of the usual amount)',
+            format: (v) => '${v.round()}%',
+            onChanged: (v) => setState(() {
+              lkI.stars = v / 100;
+              lkI.save();
+            }),
+          ),
+          changed: lkI.stars != 1.0,
+          reset: () => setState(() {
+            lkI.stars = 1.0;
+            lkI.save();
+          }),
+        ),
       _row(
         'Accent',
         Wrap(

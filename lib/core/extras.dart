@@ -50,33 +50,75 @@ class CustomCovers {
   }
 }
 
-/// Finds book descriptions online: Google Books first, then Open Library.
+/// Finds book descriptions online: Apple Books, Google Books, then Open Library.
 /// Nothing is sent but the title and author.
 class Lookup {
   static const _ua = 'Sable book reader (personal library)';
 
+  /// Sources that answered "too many requests" are left alone for a while.
+  static final Map<String, DateTime> _restUntil = {};
+  static bool _resting(String host) => _restUntil[host]?.isAfter(DateTime.now()) ?? false;
+
   static Future<Map<String, dynamic>?> _getJson(String url) async {
+    final host = Uri.parse(url).host;
+    if (_resting(host)) return null;
     final c = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
       final req = await c.getUrl(Uri.parse(url));
       req.headers.set(HttpHeaders.userAgentHeader, _ua);
       final res = await req.close().timeout(const Duration(seconds: 20));
-      if (res.statusCode == 429) throw const HttpException('Too many requests');
-      if (res.statusCode != 200) return null;
+      if (res.statusCode == 429 || res.statusCode == 403) {
+        // Free lookups are limited; try this source again in a while.
+        _restUntil[host] = DateTime.now().add(const Duration(minutes: 15));
+        AppLog.I.info('Descriptions: $host is busy (${res.statusCode}), using the other sources for now');
+        await res.drain<void>();
+        return null;
+      }
+      if (res.statusCode != 200) {
+        await res.drain<void>();
+        return null;
+      }
       final body = await utf8.decoder.bind(res).join();
       return (jsonDecode(body) as Map).cast<String, dynamic>();
+    } catch (_) {
+      return null;
     } finally {
       c.close(force: true);
     }
   }
 
-  static String _norm(String s) => s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+  /// A title boiled down: lower case, no brackets, "volume" as "vol".
+  static String _norm(String s) => s
+      .toLowerCase()
+      .replaceAll(RegExp(r'\([^)]*\)|\[[^\]]*\]'), ' ')
+      .replaceAll(RegExp(r'\bvolume\b'), 'vol')
+      .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+      .trim();
 
-  /// Do the found title and the book's title look like the same book?
+  static String? _volNo(String n) => RegExp(r'\bvol (\d+)\b').firstMatch(n)?.group(1) ?? RegExp(r'\b(\d+)$').firstMatch(n)?.group(1);
+  static String _base(String n) =>
+      n.replaceAll(RegExp(r'\bvol \d+\b'), ' ').replaceAll(RegExp(r'\b\d+$'), ' ').replaceAll(RegExp(r'\s+'), ' ').trim();
+
+  /// Do the found title and the book's title look like the same book
+  /// (and the same volume, when both have a number)?
   static bool sameTitle(String found, String wanted) {
     final a = _norm(found), b = _norm(wanted);
     if (a.isEmpty || b.isEmpty) return false;
-    return a == b || a.contains(b) || b.contains(a);
+    final va = _volNo(a), vb = _volNo(b);
+    if (va != null && vb != null && va != vb) return false;
+    final ba = _base(a), bb = _base(b);
+    if (ba.isEmpty || bb.isEmpty) return false;
+    return ba == bb || ba.contains(bb) || bb.contains(ba);
+  }
+
+  /// Picks a description out of an Apple Books search answer.
+  static String? fromApple(Map<String, dynamic> j, String title) {
+    for (final it in (j['results'] as List? ?? const [])) {
+      final m = it as Map;
+      final d = m['description'] as String?;
+      if (d != null && d.trim().length > 40 && sameTitle('${m['trackName'] ?? ''}', title)) return clean(d);
+    }
+    return null;
   }
 
   /// Plain text from the HTML some descriptions come as.
@@ -114,29 +156,34 @@ class Lookup {
     return clean(s.split(RegExp(r'\n-{3,}')).first);
   }
 
+  /// Apple Books first (good for light novels), then Google Books, then Open Library.
   static Future<String?> description(String title, String? author) async {
     final t = title.trim();
     if (t.isEmpty) return null;
     final a = (author ?? '').split(RegExp(r'[,&;]')).first.trim();
-    final q = 'intitle:${Uri.encodeQueryComponent(t)}${a.isEmpty ? '' : '+inauthor:${Uri.encodeQueryComponent(a)}'}';
-    try {
-      final g = await _getJson('https://www.googleapis.com/books/v1/volumes?q=$q&maxResults=8&printType=books');
-      final d = g == null ? null : fromGoogle(g, t);
-      if (d != null) return d;
-    } catch (e) {
-      if ('$e'.contains('Too many')) rethrow;
+    final apple = await _getJson('https://itunes.apple.com/search?media=ebook&entity=ebook&limit=15&term='
+        '${Uri.encodeQueryComponent(a.isEmpty ? t : '$t $a')}');
+    var d = apple == null ? null : fromApple(apple, t);
+    if (d == null && a.isNotEmpty) {
+      // Authors are often written differently: the title alone.
+      await Future<void>.delayed(const Duration(milliseconds: 1500));
+      final again = await _getJson('https://itunes.apple.com/search?media=ebook&entity=ebook&limit=15&term=${Uri.encodeQueryComponent(t)}');
+      d = again == null ? null : fromApple(again, t);
     }
-    try {
-      final s = await _getJson('https://openlibrary.org/search.json?title=${Uri.encodeQueryComponent(t)}'
-          '${a.isEmpty ? '' : '&author=${Uri.encodeQueryComponent(a)}'}&limit=3&fields=key,title');
-      for (final doc in (s?['docs'] as List? ?? const [])) {
-        final m = doc as Map;
-        if (!sameTitle('${m['title'] ?? ''}', t)) continue;
-        final w = await _getJson('https://openlibrary.org${m['key']}.json');
-        final d = w == null ? null : fromOpenLibraryWork(w);
-        if (d != null) return d;
-      }
-    } catch (_) {}
+    if (d != null) return d;
+    final q = 'intitle:${Uri.encodeQueryComponent(t)}${a.isEmpty ? '' : '+inauthor:${Uri.encodeQueryComponent(a)}'}';
+    final g = await _getJson('https://www.googleapis.com/books/v1/volumes?q=$q&maxResults=8&printType=books');
+    d = g == null ? null : fromGoogle(g, t);
+    if (d != null) return d;
+    final s = await _getJson('https://openlibrary.org/search.json?title=${Uri.encodeQueryComponent(t)}'
+        '${a.isEmpty ? '' : '&author=${Uri.encodeQueryComponent(a)}'}&limit=3&fields=key,title');
+    for (final doc in (s?['docs'] as List? ?? const [])) {
+      final m = doc as Map;
+      if (!sameTitle('${m['title'] ?? ''}', t)) continue;
+      final w = await _getJson('https://openlibrary.org${m['key']}.json');
+      final d = w == null ? null : fromOpenLibraryWork(w);
+      if (d != null) return d;
+    }
     return null;
   }
 
@@ -155,7 +202,8 @@ class Lookup {
       final total = vs.length + ss.length;
       var done = 0, found = 0;
       job.progress(0, total: total, detail: 'books');
-      Future<void> pause() => Future<void>.delayed(const Duration(milliseconds: 350));
+      // Apple allows about 20 searches a minute.
+      Future<void> pause() => Future<void>.delayed(const Duration(milliseconds: 1500));
       for (final s in ss) {
         if (!await job.checkpoint()) break;
         final first = s.volumes.first.primary;

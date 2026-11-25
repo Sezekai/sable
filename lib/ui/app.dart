@@ -862,98 +862,107 @@ class KeysPopup extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
-      child: GestureDetector(
-        onTap: () => Nav.I.toggle('keys'),
-        child: Container(
-          color: Colors.black54,
-          alignment: Alignment.center,
-          child: GestureDetector(
-            onTap: () {},
-            child: LayoutBuilder(
-              builder: (context, c) {
-                final maxW = c.maxWidth - 48;
-                final maxH = c.maxHeight - 48;
-                final cols = (maxW / 340).floor().clamp(1, 4);
-                return ConstrainedBox(
-                  constraints: BoxConstraints(maxWidth: cols * 340.0 + 40, maxHeight: maxH),
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: tk.panel,
-                      borderRadius: BorderRadius.circular(lk.rPanel),
-                      border: Border.all(color: tk.line2),
-                      boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 24)],
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              'Keyboard shortcuts',
-                              style: ts(size: lk.fontSize + 2, w: FontWeight.w700),
-                            ),
-                            const SizedBox(width: 10),
-                            Text('K or Esc closes', style: ts(size: 12, c: tk.faint)),
-                          ],
-                        ),
-                        const SizedBox(height: 14),
-                        Flexible(
-                          child: SingleChildScrollView(
-                            child: Wrap(
-                              spacing: 20,
-                              runSpacing: 12,
-                              children: [
-                                for (final g in keyGroups)
-                                  SizedBox(
-                                    width: 320,
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          g.$1,
-                                          style: ts(size: 12, c: tk.sec, w: FontWeight.w600),
-                                        ),
-                                        const SizedBox(height: 6),
-                                        for (final k in g.$2)
-                                          Padding(
-                                            padding: const EdgeInsets.symmetric(vertical: 2),
-                                            child: Row(
-                                              children: [
-                                                SizedBox(
-                                                  width: 120,
-                                                  child: Align(
-                                                    alignment: Alignment.centerLeft,
-                                                    child: Container(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                                                      decoration: BoxDecoration(
-                                                        color: tk.raised,
-                                                        borderRadius: BorderRadius.circular(4),
-                                                        border: Border.all(color: tk.line2),
+      // Its own Material, so text isn't drawn with the "no theme" yellow underline.
+      child: Material(
+        type: MaterialType.transparency,
+        child: GestureDetector(
+          onTap: () => Nav.I.toggle('keys'),
+          child: Container(
+            color: Colors.black54,
+            alignment: Alignment.center,
+            child: GestureDetector(
+              onTap: () {},
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final maxW = c.maxWidth - 48;
+                  final maxH = c.maxHeight - 48;
+                  final cols = (maxW / 340).floor().clamp(1, 4);
+                  return ConstrainedBox(
+                    constraints: BoxConstraints(maxWidth: cols * 340.0 + 42, maxHeight: maxH),
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: tk.panel,
+                        borderRadius: BorderRadius.circular(lk.rPanel),
+                        border: Border.all(color: tk.line2),
+                        boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 24)],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                'Keyboard shortcuts',
+                                style: ts(size: lk.fontSize + 2, w: FontWeight.w700),
+                              ),
+                              const SizedBox(width: 10),
+                              Text('K or Esc closes', style: ts(size: 12, c: tk.faint)),
+                            ],
+                          ),
+                          const SizedBox(height: 14),
+                          Flexible(
+                            child: SingleChildScrollView(
+                              child: Wrap(
+                                spacing: 0,
+                                runSpacing: 16,
+                                children: [
+                                  for (final g in keyGroups)
+                                    Container(
+                                      width: 340,
+                                      // A line down the left of each section.
+                                      padding: const EdgeInsets.only(left: 14, right: 6),
+                                      decoration: BoxDecoration(
+                                        border: Border(left: BorderSide(color: tk.line2)),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            g.$1,
+                                            style: ts(size: 12.5, c: tk.text, w: FontWeight.w700),
+                                          ),
+                                          Container(height: 1, margin: const EdgeInsets.only(top: 6, bottom: 8), color: tk.line2),
+                                          for (final k in g.$2)
+                                            Padding(
+                                              padding: const EdgeInsets.symmetric(vertical: 2),
+                                              child: Row(
+                                                children: [
+                                                  SizedBox(
+                                                    width: 120,
+                                                    child: Align(
+                                                      alignment: Alignment.centerLeft,
+                                                      child: Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                                        decoration: BoxDecoration(
+                                                          color: tk.raised,
+                                                          borderRadius: BorderRadius.circular(4),
+                                                          border: Border.all(color: tk.line2),
+                                                        ),
+                                                        child: Text(k.$1, style: ts(mono: true, size: 11.5)),
                                                       ),
-                                                      child: Text(k.$1, style: ts(mono: true, size: 11.5)),
                                                     ),
                                                   ),
-                                                ),
-                                                Expanded(
-                                                  child: Text(k.$2, style: ts(c: tk.sec)),
-                                                ),
-                                              ],
+                                                  Expanded(
+                                                    child: Text(k.$2, style: ts(c: tk.sec)),
+                                                  ),
+                                                ],
+                                              ),
                                             ),
-                                          ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
           ),
         ),

@@ -269,6 +269,7 @@ img.sable-fit {
 pre { white-space: pre-wrap !important; }
 aside[epub|type~="footnote"], aside[epub|type~="endnote"], aside[epub|type~="note"], aside[epub|type~="rearnote"] { display: none; }
 ::selection { background: ${theme.accent}55; }
+${scrollPad[0] || scrollPad[1] ? `html body { padding-top: ${scrollPad[0]}px !important; padding-bottom: ${scrollPad[1]}px !important; }` : ''}
 `
 }
 
@@ -277,7 +278,45 @@ const applyTheme = () => {
     r.setProperty('--bg', theme.bg)
     r.setProperty('--fg', theme.fg)
     r.setProperty('--muted', theme.muted)
+    drawStars()
 }
+
+// Starlight's sky behind the page (the same stars as the app, Ginkgo's
+// "Deep space"): a few tinted, a few bigger with a halo.
+const drawStars = () => {
+    const c = document.getElementById('stars')
+    if (!c) return
+    const amount = parseFloat(theme.stars ?? '0') || 0
+    if (amount <= 0) { c.style.display = 'none'; return }
+    const dpr = window.devicePixelRatio || 1
+    const w = window.innerWidth, h = window.innerHeight
+    c.width = Math.round(w * dpr)
+    c.height = Math.round(h * dpr)
+    c.style.display = 'block'
+    const g = c.getContext('2d')
+    g.setTransform(dpr, 0, 0, dpr, 0, 0)
+    g.clearRect(0, 0, w, h)
+    let seed = 7
+    const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 }
+    const n = Math.max(10, Math.min(16000, Math.round(w * h / 820 * 0.45 * amount)))
+    const cols = ['255,255,255', '190,180,255', '160,255,235', '255,226,184']
+    for (let i = 0; i < n; i++) {
+        const x = rnd() * w, y = rnd() * h
+        const big = rnd() > 0.965
+        const r = big ? 1 + rnd() * 0.7 : 0.3 + rnd() * 0.5
+        const k = rnd()
+        const col = k > 0.88 ? cols[1] : k > 0.8 ? cols[2] : k > 0.74 ? cols[3] : cols[0]
+        const a = (0.35 + rnd() * 0.6) * 0.9
+        g.fillStyle = `rgba(${col},${a})`
+        g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill()
+        if (big && rnd() > 0.5) {
+            g.fillStyle = `rgba(${col},0.11)`
+            g.beginPath(); g.arc(x, y, r * 3, 0, Math.PI * 2); g.fill()
+        }
+    }
+}
+let starsTimer = 0
+addEventListener('resize', () => { clearTimeout(starsTimer); starsTimer = setTimeout(drawStars, 150) })
 
 const columns = () => {
     const w = window.innerWidth
@@ -286,6 +325,7 @@ const columns = () => {
     return w >= 1000 ? 2 : 1
 }
 
+let scrollPad = [0, 0], inStyle = false
 const applyLayout = () => {
     if (!view?.renderer) return
     const r = view.renderer
@@ -318,13 +358,21 @@ const applyLayout = () => {
     view.style.top = `${top + (scrolled && style.scrollTop !== false ? myPx : 0)}px`
     view.style.bottom = `${bottom + (scrolled && style.scrollBottom !== false ? myPx : 0)}px`
     r.setAttribute('margin', `${scrolled ? 0 : myPx}px`)
+    // Margins switched off while scrolling still show at the start and end of a chapter.
+    const pad = [scrolled && style.scrollTop === false ? myPx : 0, scrolled && style.scrollBottom === false ? myPx : 0]
+    if (pad[0] !== scrollPad[0] || pad[1] !== scrollPad[1]) {
+        scrollPad = pad
+        if (!inStyle) r.setStyles?.(bookCSS())
+    }
     if (style.animate) r.setAttribute('animated', '')
     else r.removeAttribute('animated')
 }
 
 const applyStyle = () => {
     refitImages()
+    inStyle = true
     applyLayout()
+    inStyle = false
     view?.renderer?.setStyles?.(bookCSS())
     for (const c of view?.renderer?.getContents?.() ?? []) if (c.doc) { calibrate(c.doc); restyle(c.doc) }
 }
@@ -397,7 +445,7 @@ const onKey = e => {
         post('key', { key: e.key, ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey })
         return
     }
-    if (style.flow === 'scrolled' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) smoothScroll(e.key === 'ArrowDown' ? 100 : -100)
+    if (style.flow === 'scrolled' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) smoothScroll(e.key === 'ArrowDown' ? 120 : -120)
     else if (e.key === 'ArrowLeft') view.goLeft()
     else if (e.key === 'ArrowRight') view.goRight()
     else if (e.key === 'PageUp') view.prev()
@@ -443,8 +491,9 @@ const smoothScroll = d => {
     if (!scrollAnim && (edge === 2 || edge === dir)) {
         edgePush += d
         clearTimeout(edgeTimer)
-        edgeTimer = setTimeout(() => { edgePush = 0 }, 500)
-        if (Math.abs(edgePush) >= 160) {
+        edgeTimer = setTimeout(() => { edgePush = 0 }, 900)
+        // About five more turns of the wheel to move on to the next chapter.
+        if (Math.abs(edgePush) >= 480) {
             edgePush = 0
             scrollLeft = 0
             dir > 0 ? view.next() : view.prev()
@@ -454,7 +503,7 @@ const smoothScroll = d => {
     edgePush = 0
     if (Math.sign(scrollLeft) !== dir) scrollLeft = 0
     const h = window.innerHeight
-    scrollLeft = Math.max(-h * 2, Math.min(h * 2, scrollLeft + d * 1.1))
+    scrollLeft = Math.max(-h * 2, Math.min(h * 2, scrollLeft + d * 0.55))
     if (!scrollAnim) { lastFrame = 0; scrollAnim = requestAnimationFrame(scrollTick) }
 }
 const scrollTick = now => {

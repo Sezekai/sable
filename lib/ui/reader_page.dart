@@ -1624,6 +1624,29 @@ class ReaderPageState extends State<ReaderPage> {
               _themeChanged();
             },
           ),
+          if (Look.I.theme == 'Starlight')
+            row(
+              'Stars',
+              NumStep(
+                value: (Look.I.stars * 100).roundToDouble(),
+                step: 10,
+                min: 0,
+                max: 400,
+                title: 'Stars (% of the usual amount)',
+                format: (v) => '${v.round()}%',
+                onChanged: (v) {
+                  Look.I.stars = v / 100;
+                  Look.I.save();
+                  _themeChanged();
+                },
+              ),
+              changed: Look.I.stars != 1.0,
+              reset: () {
+                Look.I.stars = 1.0;
+                Look.I.save();
+                _themeChanged();
+              },
+            ),
           row(
             'Pages',
             Seg<PageLayout>(

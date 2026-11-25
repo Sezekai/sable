@@ -1,16 +1,10 @@
-Sable 1.4.2
+Sable 1.4.3
 
-- Fixed: after changing the text colour (or another setting), the first line of each paragraph could keep the old colour.
+- Fixed: opening a book by double-clicking it could crash Sable. The book engine was being started before the window was drawn, which crashed the graphics driver. It now starts just after.
+- Fixed: finding descriptions stopped with "Too many requests". Google Books limits free lookups, so Sable now asks Apple Books first (which has most light novels), then Google Books, then Open Library. A source that says it's busy is skipped for a while instead of stopping the job. Matching also checks the volume number, so Vol. 2 doesn't get Vol. 1's description.
+- The keyboard shortcuts page lost its yellow underlines, and each section has a heading line and a divider.
+- Starlight: Settings → Look → Stars sets how many stars there are (0% to 400%). The stars now also show behind the book in the reader, where the same option is in the reader's Settings.
+- Scrolling moves half as far for each turn of the mouse wheel, in books and everywhere else.
+- Scroll mode: with the top or bottom margin switched off, the margin still shows at the start and end of each chapter. Moving on to the next chapter now takes about five more turns of the wheel at the end, so it doesn't happen by accident.
 
-Also in this version (from 1.4.1):
-
-- Double-clicking an ebook now opens it straight into the reader. The library isn't shown first; it loads in the background (and the folder scan waits a few seconds so the book comes first). A book Sable hasn't seen before opens at once, and its title, details and cover are read just after.
-- Fixed: text size didn't stick. Some books came up much too large, got smaller when changed, then jumped back on the next page. Sable was rewriting its own text size along with the book's.
-- Text size now means the same in every book. Sable measures the size most of a book's text is drawn at and matches it to your setting, so 20 looks like 20 whatever the book's own styles say. Headings and small print keep their proportions.
-- Each book keeps its own settings. A change made while reading applies to that book only, and it's still there next time you open it. At the bottom of both reader panels, "Save as default for all books" makes the settings the default for every book you haven't changed, and "Use the default" puts a book back on it.
-- Page width: with one page (or in scroll mode) on the PC, choose how much of the window the page takes, in 5% steps.
-- Scrolling was rebuilt. In books it's smooth, doesn't get stuck, and a further push at the end of a chapter moves on to the next (or back to the previous one). The "Scroll distance" setting is gone. In scroll mode you can choose whether to keep the top margin and the bottom margin.
-- Smoother scrolling with the mouse wheel in the library, book and series pages, history, stats, settings and the reader's lists.
-- The mouse pointer now hides when it stops over the page (it didn't before, because the book's view kept showing it). It stays visible over the controls.
-
-PC: replace the `App` folder in `E:\Pictures\Sable\` with the new one. Phone: install `Sable-v1.4.2-android.apk` over the old one.
+PC: replace the `App` folder in `E:\Pictures\Sable\` with the new one. Phone: install `Sable-v1.4.3-android.apk` over the old one.

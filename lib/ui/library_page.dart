@@ -35,7 +35,7 @@ class LibraryPageState extends State<LibraryPage> {
   final search = TextEditingController(text: Library.I.filter.search);
   final Set<String> ticked = {}; // volume keys
   String? _lastTick;
-  final scroll = SmoothScroll(speed: 2, ctrlZooms: true);
+  final scroll = SmoothScroll(speed: 1, ctrlZooms: true);
   List<Entry> _entries = [];
 
   static void noop() {}

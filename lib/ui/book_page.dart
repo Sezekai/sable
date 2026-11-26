@@ -80,7 +80,7 @@ double _coverW(double w) => isPhone ? (w * 0.36).clamp(110.0, 190.0) : (w >= 130
 /// Covers are 2:3 (1.5 times as tall as wide) everywhere.
 const coverAspect = 2 / 3;
 
-Widget _coverBox(Book b, double w, {double? progress, String? coverKey, VoidCallback? onChange}) => ClipRRect(
+Widget _coverBox(Book b, double w, {double? progress, String? coverKey, String? pos}) => ClipRRect(
   borderRadius: BorderRadius.circular(lk.rPanel),
   child: SizedBox(
     width: w,
@@ -88,18 +88,9 @@ Widget _coverBox(Book b, double w, {double? progress, String? coverKey, VoidCall
     child: Stack(
       children: [
         Positioned.fill(
-          child: BookCover(book: b, width: w, coverKey: coverKey),
+          child: BookCover(book: b, width: w, coverKey: coverKey, pos: pos),
         ),
         if (progress != null) Positioned(left: 0, right: 0, bottom: 0, child: ProgressLine(value: progress)),
-        if (onChange != null && !isPhone)
-          Positioned(
-            right: 6,
-            top: 6,
-            child: Container(
-              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(lk.rControl)),
-              child: IconBtn(Icons.image_outlined, size: 16, color: Colors.white, tooltip: 'Change the cover', onTap: onChange),
-            ),
-          ),
       ],
     ),
   ),
@@ -184,9 +175,40 @@ class BookPage extends StatelessWidget {
   }
 
   Future<void> _changeCover(BuildContext context, Volume v) async {
-    final k = await coverDialog(context, 'Cover for ${v.primary.displayTitle}');
-    if (k == null) return;
-    Library.I.setCover(v, k.isEmpty ? null : k);
+    final b = v.primary;
+    final what = await coverMenu(context, custom: b.userCover != null);
+    if (what == null || !context.mounted) return;
+    switch (what) {
+      case CoverAction.find:
+        final k = await findCoverDialog(context, title: b.displayTitle, author: b.displayAuthor);
+        if (k != null) {
+          Library.I.setCover(v, k);
+          Library.I.setCoverPos(v, null);
+        }
+      case CoverAction.change:
+        final k = await coverDialog(context, 'Cover for ${b.displayTitle}');
+        if (k != null) {
+          Library.I.setCover(v, k.isEmpty ? null : k);
+          Library.I.setCoverPos(v, null);
+        }
+      case CoverAction.frame:
+        final f = Covers.I.cached(b);
+        if (f == null) {
+          toast('This book has no cover picture to frame yet.', ToastKind.info);
+          return;
+        }
+        final pos = await reframeDialog(context, file: f, pos: b.coverPos);
+        if (pos != null) Library.I.setCoverPos(v, pos.isEmpty ? null : pos);
+      case CoverAction.reset:
+        Library.I.setCover(v, null);
+        Library.I.setCoverPos(v, null);
+    }
+  }
+
+  Future<void> _findDescription(BuildContext context, Volume v) async {
+    final b = v.primary;
+    final t = await findDescriptionDialog(context, title: b.displayTitle, author: b.displayAuthor);
+    if (t != null) Library.I.setFoundDescription(v, t);
   }
 
   Future<void> _editDescription(BuildContext context, Volume v) async {
@@ -208,7 +230,7 @@ class BookPage extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _coverBox(b, cw, progress: v.progress, onChange: () => _changeCover(context, v)),
+              _coverBox(b, cw, progress: v.progress),
               const SizedBox(height: 12),
               Btn.primary(_readLabel(v), icon: Icons.auto_stories, big: true, onTap: () => openBook(context, b)),
               for (final f in v.formats.where((x) => x.format != b.format))
@@ -360,7 +382,7 @@ class BookPage extends StatelessWidget {
                 },
               ),
             Btn('Edit details', icon: Icons.edit_outlined, dense: true, onTap: () => editDetails(context, v.primary)),
-            if (!isPhone) Btn('Change cover', icon: Icons.image_outlined, dense: true, onTap: () => _changeCover(context, v)),
+            if (!isPhone) Btn('Cover', icon: Icons.image_outlined, dense: true, onTap: () => _changeCover(context, v)),
           ],
         ),
         if (tags.isNotEmpty) ...[
@@ -391,7 +413,7 @@ class BookPage extends StatelessWidget {
           context,
           b.shownDescription,
           onEdit: () => _editDescription(context, v),
-          onFind: b.shownDescription != null || busy ? null : () => Lookup.run(volumes: [v]),
+          onFind: busy ? null : () => _findDescription(context, v),
         ),
         if (v.hasCopies) ...[const SizedBox(height: 18), CopiesBox(volume: v, onRead: (f) => openBook(context, f))],
       ],
@@ -652,13 +674,45 @@ class _SeriesPageState extends State<SeriesPage> {
 
   SeriesInfo get _info => Library.I.infoFor(widget.seriesKey);
 
-  Future<void> _changeCover() async {
-    final k = await coverDialog(context, 'Cover for the series', canReset: _info.cover != null);
-    if (k == null) return;
-    final i = _info..cover = k.isEmpty ? null : k;
+  void _saveCover(String? key, String? pos) {
+    final i = _info
+      ..cover = key
+      ..coverPos = pos;
     Library.I.saveInfo(i);
     Covers.I.version++;
     Covers.I.changedNow();
+  }
+
+  Future<void> _changeCover(SeriesEntry e) async {
+    final what = await coverMenu(context, custom: _info.cover != null);
+    if (what == null || !mounted) return;
+    switch (what) {
+      case CoverAction.find:
+        final k = await findCoverDialog(context, title: e.label, author: e.volumes.first.any.displayAuthor);
+        if (k != null) _saveCover(k, null);
+      case CoverAction.change:
+        final k = await coverDialog(context, 'Cover for the series', canReset: _info.cover != null);
+        if (k != null) _saveCover(k.isEmpty ? null : k, null);
+      case CoverAction.frame:
+        // Framing a series that uses its first book's cover makes that its own.
+        final key = _info.cover ?? Covers.I.keyFor(e.volumes.first.any);
+        final f = File(Covers.I.fileForFp(key));
+        if (!f.existsSync()) {
+          toast('This series has no cover picture to frame yet.', ToastKind.info);
+          return;
+        }
+        final pos = await reframeDialog(context, file: f, pos: _info.coverPos);
+        if (pos != null) _saveCover(key, pos.isEmpty ? null : pos);
+      case CoverAction.reset:
+        _saveCover(null, null);
+    }
+  }
+
+  Future<void> _findDescription(SeriesEntry e) async {
+    final t = await findDescriptionDialog(context, title: e.label, author: e.volumes.first.any.displayAuthor);
+    if (t == null) return;
+    final i = _info..foundDescription = t;
+    Library.I.saveInfo(i);
   }
 
   Future<void> _editDescription() async {
@@ -756,9 +810,13 @@ class _SeriesPageState extends State<SeriesPage> {
         'Edit series',
         icon: Icons.edit_outlined,
         dense: true,
-        onTap: () => seriesDialog(context, name: e.label, volumes: e.volumes),
+        onTap: () async {
+          final k = await seriesDialog(context, name: e.label, volumes: e.volumes);
+          // A new name is a new key: stay on the series under its new name.
+          if (k != null && k != widget.seriesKey) Nav.I.replaceSeriesKey(k);
+        },
       ),
-      if (!isPhone) Btn('Change cover', icon: Icons.image_outlined, dense: true, onTap: _changeCover),
+      if (!isPhone) Btn('Cover', icon: Icons.image_outlined, dense: true, onTap: () => _changeCover(e)),
     ],
   );
 
@@ -766,9 +824,7 @@ class _SeriesPageState extends State<SeriesPage> {
     context,
     _info.shownDescription,
     onEdit: _editDescription,
-    onFind: isPhone || _info.shownDescription != null || Jobs.I.isQueued(Lookup.jobName)
-        ? null
-        : () => Lookup.run(series: [e], volumes: e.volumes),
+    onFind: isPhone || Jobs.I.isQueued(Lookup.jobName) ? null : () => _findDescription(e),
   );
 
   Widget _pc(BuildContext context, SeriesEntry e, List<String> editions, double w) {
@@ -787,7 +843,7 @@ class _SeriesPageState extends State<SeriesPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _coverBox(e.volumes.first.any, cw, coverKey: _info.cover, onChange: _changeCover),
+              _coverBox(e.volumes.first.any, cw, coverKey: _info.cover, pos: _info.coverPos),
               const SizedBox(height: 12),
               _readBtn(e),
             ],
@@ -818,7 +874,7 @@ class _SeriesPageState extends State<SeriesPage> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _coverBox(e.volumes.first.any, cw, coverKey: _info.cover),
+            _coverBox(e.volumes.first.any, cw, coverKey: _info.cover, pos: _info.coverPos),
             const SizedBox(width: 14),
             Expanded(child: _head(e, editions, compact: true)),
           ],

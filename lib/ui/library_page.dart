@@ -35,7 +35,7 @@ class LibraryPageState extends State<LibraryPage> {
   final search = TextEditingController(text: Library.I.filter.search);
   final Set<String> ticked = {}; // volume keys
   String? _lastTick;
-  final scroll = SmoothScroll(speed: 1, ctrlZooms: true);
+  final scroll = SmoothScroll(ctrlZooms: true);
   List<Entry> _entries = [];
 
   static void noop() {}
@@ -825,7 +825,7 @@ class LibraryPageState extends State<LibraryPage> {
               dense: true,
               onTap: () async {
                 final ok = await seriesDialog(context, name: vs.first.primary.displaySeries ?? '', volumes: vs, isNew: true);
-                if (ok) setState(ticked.clear);
+                if (ok != null) setState(ticked.clear);
               },
             ),
           ],
@@ -1099,15 +1099,26 @@ class LibraryPageState extends State<LibraryPage> {
   }
 }
 
+/// Where a cover is framed: "x,y" (each -1 to 1) as an alignment.
+Alignment coverAlign(String? pos) {
+  if (pos == null) return Alignment.center;
+  final p = pos.split(',');
+  final x = double.tryParse(p.first) ?? 0, y = p.length > 1 ? double.tryParse(p[1]) ?? 0 : 0.0;
+  return Alignment(x.clamp(-1, 1), y.clamp(-1, 1));
+}
+
 /// A book's cover, or a made-up one from its title when there's no picture.
 class BookCover extends StatelessWidget {
-  const BookCover({super.key, required this.book, required this.width, this.fit = BoxFit.cover, this.coverKey});
+  const BookCover({super.key, required this.book, required this.width, this.fit = BoxFit.cover, this.coverKey, this.pos});
   final Book book;
   final double width;
   final BoxFit fit;
 
   /// A cover picked by hand for a series (wins over the book's).
   final String? coverKey;
+
+  /// Where it's framed ("x,y"); the book's own setting when not given.
+  final String? pos;
 
   @override
   Widget build(BuildContext context) {
@@ -1123,6 +1134,7 @@ class BookCover extends StatelessWidget {
       f,
       key: ValueKey('${f.path}${Covers.I.version}'),
       fit: fit,
+      alignment: coverAlign(coverKey != null ? pos : (pos ?? book.coverPos)),
       cacheWidth: (width * dpr).round().clamp(32, 720),
       gaplessPlayback: true,
       filterQuality: FilterQuality.medium,
@@ -1282,7 +1294,13 @@ class EntryCard extends StatelessWidget {
         final cover = Stack(
           children: [
             Positioned.fill(
-              child: BookCover(book: b, width: w),
+              child: series == null
+                  ? BookCover(book: b, width: w)
+                  : () {
+                      // A series shows its own cover (and framing) when one was picked.
+                      final info = Library.I.infoFor(series.key);
+                      return BookCover(book: b, width: w, coverKey: info.cover, pos: info.cover != null ? info.coverPos : null);
+                    }(),
             ),
             if (series != null)
               Positioned(

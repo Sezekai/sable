@@ -59,6 +59,9 @@ class Book {
   /// A cover picked by hand: its key in the covers folder (like custom-1a2b…).
   String? userCover;
 
+  /// Which part of the cover shows when it's cropped to the 2:3 frame ("x,y", each -1 to 1).
+  String? coverPos;
+
   /// Files with the same group are one book (combined by hand); 'solo-…' keeps a file on its own.
   String? userGroup;
 
@@ -121,6 +124,7 @@ class Book {
     this.userDescription,
     this.foundDescription,
     this.userCover,
+    this.coverPos,
     this.userGroup,
     this.preferred = false,
     this.outside = false,
@@ -231,6 +235,7 @@ class Book {
         userDescription: r['user_description'] as String?,
         foundDescription: r['found_description'] as String?,
         userCover: r['user_cover'] as String?,
+        coverPos: r['cover_pos'] as String?,
         userGroup: r['user_group'] as String?,
         preferred: (r['preferred'] as int? ?? 0) == 1,
         outside: (r['outside'] as int? ?? 0) == 1,
@@ -251,11 +256,12 @@ class Book {
 
 /// Details for a series kept apart from its books (a description, a cover).
 class SeriesInfo {
-  SeriesInfo(this.key, {this.description, this.foundDescription, this.cover});
+  SeriesInfo(this.key, {this.description, this.foundDescription, this.cover, this.coverPos});
   final String key;
   String? description;
   String? foundDescription;
   String? cover;
+  String? coverPos;
   String? get shownDescription => description ?? foundDescription;
 }
 
@@ -411,6 +417,15 @@ CREATE TABLE IF NOT EXISTS book_styles(book_id INTEGER PRIMARY KEY, style TEXT N
 PRAGMA user_version = 3;
 ''');
     }
+    if (v < 4) {
+      // 1.5: where a cover is framed.
+      for (final t in ['books', 'series_info']) {
+        try {
+          raw.execute('ALTER TABLE $t ADD COLUMN cover_pos TEXT');
+        } catch (_) {}
+      }
+      raw.execute('PRAGMA user_version = 4;');
+    }
   }
 
   /// A book's own reader settings (JSON), or null when it follows the default.
@@ -441,22 +456,23 @@ PRAGMA user_version = 3;
             description: r['description'] as String?,
             foundDescription: r['found_description'] as String?,
             cover: r['cover'] as String?,
+            coverPos: r['cover_pos'] as String?,
           ),
       };
 
   void saveSeriesInfo(SeriesInfo i) => raw.execute(
-        '''INSERT INTO series_info(key, description, found_description, cover, updated_at) VALUES(?,?,?,?,?)
+        '''INSERT INTO series_info(key, description, found_description, cover, cover_pos, updated_at) VALUES(?,?,?,?,?,?)
         ON CONFLICT(key) DO UPDATE SET description=excluded.description, found_description=excluded.found_description,
-        cover=excluded.cover, updated_at=excluded.updated_at''',
-        [i.key, i.description, i.foundDescription, i.cover, nowSec()],
+        cover=excluded.cover, cover_pos=excluded.cover_pos, updated_at=excluded.updated_at''',
+        [i.key, i.description, i.foundDescription, i.cover, i.coverPos, nowSec()],
       );
 
   /// Description, cover, group and preferred copy (set by hand or found online).
   void updateExtras(Book b) {
     raw.execute(
-      '''UPDATE books SET user_description=?, found_description=?, user_cover=?, user_group=?, preferred=?, outside=?,
+      '''UPDATE books SET user_description=?, found_description=?, user_cover=?, cover_pos=?, user_group=?, preferred=?, outside=?,
       updated_at=? WHERE id=?''',
-      [b.userDescription, b.foundDescription, b.userCover, b.userGroup, b.preferred ? 1 : 0, b.outside ? 1 : 0, nowSec(), b.id],
+      [b.userDescription, b.foundDescription, b.userCover, b.coverPos, b.userGroup, b.preferred ? 1 : 0, b.outside ? 1 : 0, nowSec(), b.id],
     );
   }
 

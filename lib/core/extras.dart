@@ -59,9 +59,9 @@ class Lookup {
   static final Map<String, DateTime> _restUntil = {};
   static bool _resting(String host) => _restUntil[host]?.isAfter(DateTime.now()) ?? false;
 
-  static Future<Map<String, dynamic>?> _getJson(String url) async {
+  static Future<Map<String, dynamic>?> _getJson(String url, {bool force = false}) async {
     final host = Uri.parse(url).host;
-    if (_resting(host)) return null;
+    if (!force && _resting(host)) return null;
     final c = HttpClient()..connectionTimeout = const Duration(seconds: 10);
     try {
       final req = await c.getUrl(Uri.parse(url));
@@ -156,6 +156,86 @@ class Lookup {
     return clean(s.split(RegExp(r'\n-{3,}')).first);
   }
 
+  /// Everything the chosen services find for a title (asked for by hand, so
+  /// a service that was busy is asked again). Best matches first.
+  static Future<List<Found>> search(String title, String? author, {FindSource source = FindSource.all, bool covers = false}) async {
+    final t = title.trim();
+    if (t.isEmpty) return [];
+    final a = (author ?? '').trim();
+    final q = a.isEmpty ? t : '$t $a';
+    final out = <Found>[];
+    final jobs = <Future<void>>[];
+    if (source == FindSource.all || source == FindSource.apple) {
+      jobs.add(() async {
+        final j = await _getJson('https://itunes.apple.com/search?media=ebook&entity=ebook&limit=20&term=${Uri.encodeQueryComponent(q)}',
+            force: true);
+        for (final it in (j?['results'] as List? ?? const [])) {
+          final m = it as Map;
+          final art = m['artworkUrl100'] as String?;
+          final d = m['description'] as String?;
+          out.add(Found(
+            'Apple Books',
+            '${m['trackName'] ?? ''}',
+            '${m['artistName'] ?? ''}',
+            text: d == null || d.trim().length < 40 ? null : clean(d),
+            image: art?.replaceAll(RegExp(r'\d+x\d+bb'), '1400x1400bb'),
+            thumb: art?.replaceAll(RegExp(r'\d+x\d+bb'), '300x300bb'),
+          ));
+        }
+      }());
+    }
+    if (source == FindSource.all || source == FindSource.google) {
+      jobs.add(() async {
+        final gq = 'intitle:${Uri.encodeQueryComponent(t)}${a.isEmpty ? '' : '+inauthor:${Uri.encodeQueryComponent(a.split(RegExp(r'[,&;]')).first.trim())}'}';
+        final j = await _getJson('https://www.googleapis.com/books/v1/volumes?q=$gq&maxResults=20&printType=books', force: true);
+        for (final it in (j?['items'] as List? ?? const [])) {
+          final vi = (it as Map)['volumeInfo'] as Map? ?? const {};
+          final links = vi['imageLinks'] as Map? ?? const {};
+          final th = (links['thumbnail'] as String?)?.replaceFirst('http://', 'https://').replaceAll('&edge=curl', '');
+          final d = vi['description'] as String?;
+          out.add(Found(
+            'Google Books',
+            '${vi['title'] ?? ''}${vi['subtitle'] == null ? '' : ': ${vi['subtitle']}'}',
+            ((vi['authors'] as List?) ?? const []).join(', '),
+            text: d == null || d.trim().length < 40 ? null : clean(d),
+            image: th?.replaceAll('zoom=1', 'zoom=0'),
+            thumb: th,
+          ));
+        }
+      }());
+    }
+    if (source == FindSource.all || source == FindSource.openLibrary) {
+      jobs.add(() async {
+        final j = await _getJson('https://openlibrary.org/search.json?title=${Uri.encodeQueryComponent(t)}'
+            '${a.isEmpty ? '' : '&author=${Uri.encodeQueryComponent(a)}'}&limit=12&fields=key,title,author_name,cover_i', force: true);
+        var works = 0;
+        for (final doc in (j?['docs'] as List? ?? const [])) {
+          final m = doc as Map;
+          final cover = m['cover_i'];
+          String? text;
+          if (!covers && works < 5) {
+            works++;
+            final w = await _getJson('https://openlibrary.org${m['key']}.json', force: true);
+            text = w == null ? null : fromOpenLibraryWork(w);
+          }
+          out.add(Found(
+            'Open Library',
+            '${m['title'] ?? ''}',
+            ((m['author_name'] as List?) ?? const []).join(', '),
+            text: text,
+            image: cover == null ? null : 'https://covers.openlibrary.org/b/id/$cover-L.jpg',
+            thumb: cover == null ? null : 'https://covers.openlibrary.org/b/id/$cover-M.jpg',
+          ));
+        }
+      }());
+    }
+    await Future.wait(jobs);
+    final keep = out.where((f) => covers ? f.image != null : f.text != null).toList();
+    // Same title first (and the same volume), then the rest as found.
+    final good = keep.where((f) => sameTitle(f.title, t)).toList();
+    return [...good, ...keep.where((f) => !good.contains(f))];
+  }
+
   /// Apple Books first (good for light novels), then Google Books, then Open Library.
   static Future<String?> description(String title, String? author) async {
     final t = title.trim();
@@ -237,4 +317,27 @@ class Lookup {
       return 'Found $found description${found == 1 ? '' : 's'} of $total';
     }));
   }
+}
+
+
+/// Where to look things up.
+enum FindSource {
+  all('Everywhere'),
+  apple('Apple Books'),
+  google('Google Books'),
+  openLibrary('Open Library');
+
+  const FindSource(this.label);
+  final String label;
+}
+
+/// One search result: a description or a cover, and where it came from.
+class Found {
+  Found(this.source, this.title, this.author, {this.text, this.image, this.thumb});
+  final String source;
+  final String title;
+  final String author;
+  final String? text;
+  final String? image;
+  final String? thumb;
 }

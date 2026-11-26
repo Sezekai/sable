@@ -27,6 +27,7 @@ import 'ui/app.dart';
 import 'ui/look.dart';
 import 'ui/pdf_view.dart';
 import 'ui/reader_page.dart';
+import 'ui/extras_ui.dart';
 import 'ui/widgets.dart';
 
 const appVersion = String.fromEnvironment('SABLE_VERSION', defaultValue: 'dev');
@@ -160,9 +161,12 @@ Future<void> main(List<String> args) async {
       // (The self-test keeps a fixed size, so its screenshots compare.)
       if (!selftest) {
         await windowManager.maximize();
-        Future<void>.delayed(const Duration(milliseconds: 300), () async {
-          if (!await windowManager.isMaximized()) await windowManager.maximize();
-        });
+        // Again after the first frames, in case anything put it back.
+        for (final ms in const [300, 1200]) {
+          Future<void>.delayed(Duration(milliseconds: ms), () async {
+            if (!await windowManager.isMaximized()) await windowManager.maximize();
+          });
+        }
       }
       await windowManager.focus();
     });
@@ -516,6 +520,15 @@ Future<void> _runSelftest() async {
     Nav.I.openVolume(vols[epub.volumeKey]!);
     await Future<void>.delayed(const Duration(milliseconds: 800));
     await _screenshot('book');
+    // Looking up a cover by hand (needs the internet; the picture is just for a look).
+    final lookCtx = navKey.currentContext;
+    if (lookCtx != null) {
+      unawaited(findCoverDialog(lookCtx, title: 'The Alchemist Who Survived Now Dreams of a Quiet City Life', author: 'Usata Nonohara'));
+      await Future<void>.delayed(const Duration(seconds: 6));
+      await _screenshot('find-cover');
+      navKey.currentState?.pop();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+    }
     Nav.I.closeDetail();
 
     // EPUB reader.

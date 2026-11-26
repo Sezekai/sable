@@ -1,5 +1,7 @@
+import 'dart:math' as math;
 import 'dart:async';
 
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart';
 
@@ -1121,10 +1123,12 @@ class _ColourDialogState extends State<_ColourDialog> {
 }
 
 
-/// Smooth mouse-wheel scrolling: each notch adds to where the list is heading,
-/// and it eases there instead of jumping. Touch and trackpads work as usual.
+/// Mouse-wheel scrolling like a web browser: each notch moves about 120
+/// pixels, glided over a few frames; spinning the wheel quickly piles the
+/// notches up so it covers ground fast, and the motion never restarts or
+/// stutters between notches. Touch, trackpads and dragging work as usual.
 class SmoothScroll extends ScrollController {
-  SmoothScroll({this.speed = 0.8, this.ctrlZooms = false});
+  SmoothScroll({this.speed = 2.2, this.ctrlZooms = false});
   final double speed;
 
   /// Ctrl+wheel is used for something else (such as cover size).
@@ -1138,26 +1142,59 @@ class SmoothScroll extends ScrollController {
 class _SmoothPosition extends ScrollPositionWithSingleContext {
   _SmoothPosition(this.owner, {required super.physics, required super.context, super.oldPosition, super.debugLabel});
   final SmoothScroll owner;
-  double? _goal;
+  Ticker? _ticker;
+  double _goal = 0;
+  Duration _last = Duration.zero;
+  bool _gliding = false;
 
   @override
   void pointerScroll(double delta) {
     if (delta == 0) return;
     if (owner.ctrlZooms && HardwareKeyboard.instance.isControlPressed) return;
-    final heading = _goal != null && activity is DrivenScrollActivity;
-    final from = heading ? _goal! : pixels;
-    // Changing direction starts from where it is now.
-    final base = heading && (delta > 0) != (_goal! > pixels) ? pixels : from;
-    final goal = (base + delta * owner.speed).clamp(minScrollExtent, maxScrollExtent);
-    if ((goal - pixels).abs() < 0.5) return;
-    _goal = goal;
-    animateTo(goal, duration: const Duration(milliseconds: 280), curve: Curves.easeOutCubic);
+    if (!hasContentDimensions) return;
+    // Turning the other way starts from where it is now.
+    if (!_gliding || (delta > 0) != (_goal > pixels)) _goal = pixels;
+    _goal = (_goal + delta * owner.speed).clamp(minScrollExtent, maxScrollExtent);
+    if ((_goal - pixels).abs() < 0.5) return;
+    _ticker ??= context.vsync.createTicker(_tick);
+    if (!_ticker!.isActive) {
+      _last = Duration.zero;
+      _gliding = true;
+      _ticker!.start();
+    }
+  }
+
+  void _tick(Duration now) {
+    // Something else took over (a drag, the scrollbar, a jump).
+    if (!_gliding || activity is! IdleScrollActivity || !hasContentDimensions) return _stop();
+    final dt = _last == Duration.zero ? 16.0 : (now - _last).inMicroseconds / 1000.0;
+    _last = now;
+    final goal = _goal.clamp(minScrollExtent, maxScrollExtent);
+    final left = goal - pixels;
+    if (left.abs() < 0.5) {
+      jumpTo(goal);
+      return _stop();
+    }
+    // Eases toward the goal: about 90% of the way in 150 ms.
+    final f = 1 - math.exp(-dt.clamp(1, 50) / 65);
+    jumpTo(pixels + left * f);
+  }
+
+  void _stop() {
+    _gliding = false;
+    _ticker?.stop();
+  }
+
+  @override
+  void dispose() {
+    _ticker?.dispose();
+    super.dispose();
   }
 }
 
 /// Gives a scrollable its own [SmoothScroll] (kept across rebuilds).
 class Smooth extends StatefulWidget {
-  const Smooth({super.key, required this.builder, this.speed = 0.8});
+  const Smooth({super.key, required this.builder, this.speed = 2.2});
   final Widget Function(ScrollController controller) builder;
   final double speed;
   @override

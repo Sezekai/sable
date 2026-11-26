@@ -107,6 +107,13 @@ class Nav extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The series page under a new key (renamed), without adding to Back.
+  void replaceSeriesKey(String key) {
+    detail = key;
+    detailIsSeries = true;
+    notifyListeners();
+  }
+
   void openSeriesKey(String key) {
     _remember();
     page = PageId.library;
@@ -634,14 +641,22 @@ class StatusBar extends StatelessWidget {
       listenable: Jobs.I,
       builder: (_, _) {
         final j = Jobs.I.current;
-        return Container(
-          height: 36,
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            color: lk.starlight ? tk.panel.withValues(alpha: 0.85) : tk.panel,
-            border: Border(top: BorderSide(color: tk.line)),
+        // A click anywhere on the bar (but its buttons) opens or closes the log.
+        return GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Nav.I.toggle('log'),
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: Container(
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              decoration: BoxDecoration(
+                color: lk.starlight ? tk.panel.withValues(alpha: 0.85) : tk.panel,
+                border: Border(top: BorderSide(color: tk.line)),
+              ),
+              child: j == null ? _idle() : _running(j),
+            ),
           ),
-          child: j == null ? _idle() : _running(j),
         );
       },
     );
@@ -837,7 +852,7 @@ const keyGroups = <(String, List<(String, String)>)>[
     [
       ('← →', 'Previous / next page'),
       ('PgUp PgDn', 'Previous / next page'),
-      ('Move the mouse', 'Show the controls for a moment'),
+      ('Click the page', 'Show or hide the controls'),
       ('Space, H, Enter', 'Show the controls until pressed again (or Esc)'),
       ('M', 'Controls menu: arrows move, Space/Enter choose, M/Esc close'),
       ('S', 'Reader settings'),

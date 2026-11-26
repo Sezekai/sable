@@ -154,7 +154,6 @@ class ReaderPageState extends State<ReaderPage> {
   final Set<String> _hover = {};
   Timer? _hideTimer;
   Offset? _lastPointer;
-  DateTime _quietUntil = DateTime(0);
   String _lastKey = '';
   DateTime _lastKeyAt = DateTime(0);
 
@@ -548,24 +547,22 @@ class ReaderPageState extends State<ReaderPage> {
 
   static const _idle = Duration(milliseconds: 2500);
 
-  /// The mouse moved over the page: show the controls and the pointer for a moment.
+  /// The mouse moved over the page: the pointer shows again (the controls
+  /// only come and go with a click or a key).
   void _moved() {
-    if (!mounted || endCard || DateTime.now().isBefore(_quietUntil)) return;
+    if (!mounted || endCard) return;
     tracker.activity();
-    final change = !chrome || cursorHidden;
-    chrome = true;
+    final change = cursorHidden;
     if (cursorHidden) _setCursor(false);
     _hideTimer?.cancel();
     _hideTimer = Timer(_idle, _idleNow);
     if (change) setState(() {});
   }
 
-  /// The mouse has stopped: hide the pointer, and the controls unless they're in use.
+  /// The mouse has stopped over the page: hide the pointer.
   void _idleNow() {
     if (!mounted) return;
-    final over = _hover.isNotEmpty;
-    if (!over) _setCursor(true);
-    if (!(pinned || menu || panel != null || over || lightbox)) chrome = false;
+    if (_hover.isEmpty) _setCursor(true);
     setState(() {});
   }
 
@@ -585,8 +582,6 @@ class ReaderPageState extends State<ReaderPage> {
       } else if (chrome) {
         chrome = false;
         pinned = false;
-        // The click itself nudges the mouse; don't bring the controls straight back.
-        _quietUntil = DateTime.now().add(const Duration(milliseconds: 600));
       } else {
         chrome = true;
         pinned = true;

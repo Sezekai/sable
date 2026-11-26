@@ -254,6 +254,10 @@ export class View extends HTMLElement {
         if (this.isFixedLayout) {
             await import('./fixed-layout.js')
             this.renderer = document.createElement('foliate-fxl')
+        } else if (this.sableScroll) {
+            // Sable: scroll mode is the whole book as one long page.
+            await import('./scroller.js')
+            this.renderer = document.createElement('sable-scroller')
         } else {
             await import('./paginator.js')
             this.renderer = document.createElement('foliate-paginator')

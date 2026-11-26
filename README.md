@@ -55,7 +55,7 @@ Settings → Storage shows each place with its size, and can open, move or clear
 - **Editions:** folders like `Web Novel` and `Fan Translation` inside a series become editions with their own volume lists.
 - **One entry per book:** an EPUB and a PDF (or other versions) of the same book show once, as the EPUB, with "Read the PDF" and the other copies on its page. Progress is shared between them and you choose the default copy. Copies Sable doesn't spot can be **combined** by hand (and separated again).
 - **Make a series** from any ticked books, then set its name, order, description and cover.
-- **Descriptions and covers:** missing descriptions are looked up online (Google Books, then Open Library) from Settings, a book or series page, or for ticked books. Any description can be written by hand, and any cover changed by pasting an image (or image link), dragging one in, or choosing a file.
+- **Descriptions and covers:** missing descriptions are looked up online (Apple Books, Google Books, Open Library) from Settings or for ticked books; on a book or series page you can search by hand under any title and pick from what's found. Covers can be found online the same way, pasted, dragged in or chosen from a file, and framed (choose which part of a tall or wide picture shows).
 - **Default ebook app on Windows** (Settings → Opening ebooks): double-clicking an EPUB, MOBI or AZW3 opens it in Sable. Books outside the library are tracked in History and resume where you left off; if they're added later, their progress is already there.
 - **Cover grid** (Comfortable, Compact, Covers only) sized by the slider, + −, or Ctrl + wheel, plus a sortable **List**. A **Continue reading** strip sits at the top.
 - Covers are 1.5 times as tall as they're wide everywhere. Titles use two lines when they need to (the author shows when the title fits on one).
@@ -73,7 +73,7 @@ Settings → Storage shows each place with its size, and can open, move or clear
 - **Settings** (S): theme, pages at once, text colour, alignment (left, centre, right, justify), **same top line** (text always starts on the same line, even after a heading or a new chapter), turning, animation, controls and mouse.
 - **Each book keeps its own settings**: a change made while reading applies to that book only. **Save as default for all books** (at the bottom of either panel) makes them the default for every book you haven't changed; **Use the default** puts a book back.
 - **Text size means the same in every book**: the size most of a book's text is drawn at is measured and matched to your setting, whatever sizes the book itself uses.
-- **Page width** for one page (and scrolling) on the PC, as a share of the window. Scrolling is smooth, carries on into the next chapter, and can keep or drop the top and bottom margins.
+- **Page width** for one page (and scrolling) on the PC, as a share of the window. Scroll mode is the whole book as one long page, with a divider at each chapter; it can keep or drop the top and bottom margins.
 - The mouse pointer hides when it stops over the page.
 - Click the left or right of the page to turn, the middle for the bars. Arrow keys, Page Up/Down, Space and the mouse wheel turn pages too.
 - **Contents** (T), **bookmarks** (B), **search in the book** (/), and a progress slider.

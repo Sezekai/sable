@@ -369,6 +369,7 @@ const applyLayout = () => {
 }
 
 const applyStyle = () => {
+    if (view?.renderer && !remaking && (style.flow === 'scrolled') !== viewScrolls) { remakeView(); return }
     refitImages()
     inStyle = true
     applyLayout()
@@ -424,10 +425,12 @@ const pageKeys = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Pa
 
 const onKey = e => {
     if ($('#lightbox').classList.contains('show')) {
-        if (e.key === 'Escape') closeLightbox()
-        else if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') stepPicture(1)
-        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') stepPicture(-1)
         e.preventDefault()
+        if (e.key === 'Escape') closeLightbox()
+        else if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === 'PageDown') stepPicture(1)
+        else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') stepPicture(-1)
+        // Every other shortcut still works (the app's controls, settings and so on).
+        else post('key', { key: e.key, ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey })
         return
     }
     const tag = e.target?.tagName
@@ -445,7 +448,11 @@ const onKey = e => {
         post('key', { key: e.key, ctrl: e.ctrlKey, shift: e.shiftKey, alt: e.altKey })
         return
     }
-    if (style.flow === 'scrolled' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) smoothScroll(e.key === 'ArrowDown' ? 120 : -120)
+    if (style.flow === 'scrolled' && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        const r = view?.renderer
+        if (r?.scrollByPx) r.scrollByPx(e.key === 'ArrowDown' ? 120 : -120)
+        else smoothScroll(e.key === 'ArrowDown' ? 120 : -120)
+    }
     else if (e.key === 'ArrowLeft') view.goLeft()
     else if (e.key === 'ArrowRight') view.goRight()
     else if (e.key === 'PageUp') view.prev()
@@ -466,6 +473,8 @@ const onWheel = e => {
     const dx = e.deltaMode === 1 ? e.deltaX * 40 : e.deltaX
     const d = Math.abs(dy) >= Math.abs(dx) ? dy : dx
     if (!d) return
+    // Scroll mode scrolls like a web page (the browser's own smooth scrolling).
+    if (view?.renderer?.continuous) { post('activity'); return }
     e.preventDefault()
     post('activity')
     if (style.flow === 'scrolled') return smoothScroll(d)
@@ -558,33 +567,63 @@ const goChapterEdge = end => {
 // ---------- pictures ----------
 
 let lb = { scale: 1, x: 0, y: 0, drag: null }
-let pictures = [], pictureAt = -1, stepping = false
+let stepping = false
 const lbImg = () => $('#lightbox img')
 const lbApply = () => {
     const im = lbImg()
     im.style.transform = `translate(${lb.x}px, ${lb.y}px) scale(${lb.scale})`
 }
-const pictureSrc = el => el?.src || el?.getAttribute?.('href') || el?.getAttributeNS?.('http://www.w3.org/1999/xlink', 'href') || ''
-const isBigPicture = el => el.tagName.toLowerCase() === 'image' || el.naturalWidth >= 200 || el.naturalHeight >= 200
-const picturesInView = () => {
-    const out = []
-    for (const c of view?.renderer?.getContents?.() ?? [])
-        for (const el of c.doc?.querySelectorAll('img, image') ?? [])
-            if (isBigPicture(el) && pictureSrc(el)) out.push({ el, index: c.index })
-    return out
-}
-const showPicture = src => {
+const pictureSrc = el => el?.getAttribute?.('src') || el?.src || el?.getAttribute?.('href') || el?.getAttributeNS?.('http://www.w3.org/1999/xlink', 'href') || ''
+const pictureEls = doc => [...(doc?.querySelectorAll?.('img, image') ?? [])]
+const showPicture = src => new Promise(resolve => {
     const im = lbImg()
     im.onload = () => {
         const fit = Math.min(window.innerWidth * 0.96 / im.naturalWidth, window.innerHeight * 0.96 / im.naturalHeight)
         lb = { scale: fit, x: -im.naturalWidth * fit / 2, y: -im.naturalHeight * fit / 2, drag: null }
         lbApply()
+        resolve(im.naturalWidth >= 200 || im.naturalHeight >= 200)
     }
+    im.onerror = () => resolve(false)
     im.src = src
+})
+
+// Every picture in the book, in order, as (part of the book, nth picture in it).
+// Found by reading each part's text, without turning any pages.
+let gallery = null, galleryAt = -1
+const buildGallery = async () => {
+    const out = []
+    const secs = view.book.sections
+    for (let i = 0; i < secs.length; i++) {
+        const s = secs[i]
+        if (!s.createDocument) continue
+        let doc
+        try { doc = await s.createDocument() } catch { continue }
+        pictureEls(doc).forEach((_, n) => out.push({ section: i, n }))
+    }
+    return out
+}
+// The address of a picture, from the open page or by loading its part of the book.
+const parsedParts = new Map()
+const gallerySrc = async ({ section, n }) => {
+    const shown = view.renderer.getContents().find(c => c.index === section)?.doc
+    if (shown) return pictureSrc(pictureEls(shown)[n])
+    let doc = parsedParts.get(section)
+    if (!doc) {
+        const url = await view.book.sections[section].load()
+        const text = await (await fetch(url)).text()
+        doc = new DOMParser().parseFromString(text, 'application/xhtml+xml')
+        if (doc.querySelector('parsererror')) doc = new DOMParser().parseFromString(text, 'text/html')
+        parsedParts.set(section, doc)
+    }
+    return pictureSrc(pictureEls(doc)[n])
 }
 const openLightbox = (src, el) => {
-    pictures = picturesInView()
-    pictureAt = Math.max(0, pictures.findIndex(p => p.el === el))
+    const doc = el?.ownerDocument
+    const index = view.renderer.getContents().find(c => c.doc === doc)?.index ?? -1
+    const n = pictureEls(doc).indexOf(el)
+    galleryAt = -1
+    gallery = gallery ?? buildGallery()
+    Promise.resolve(gallery).then(g => { gallery = g; galleryAt = g.findIndex(p => p.section === index && p.n === n) })
     showPicture(src)
     $('#lightbox').classList.add('show')
     post('lightbox', { open: true })
@@ -592,39 +631,28 @@ const openLightbox = (src, el) => {
 const closeLightbox = () => {
     $('#lightbox').classList.remove('show')
     post('lightbox', { open: false })
+    // Parts loaded only for pictures are let go (the open page keeps its own).
+    const open = new Set(view.renderer.getContents().map(c => c.index))
+    for (const i of parsedParts.keys()) if (!open.has(i)) view.book.sections[i]?.unload?.()
+    parsedParts.clear()
 }
 
-// The next or previous picture. Past the ones in this part of the book, the book
-// moves on to the next part that has a picture, so the page follows along.
+// The next or previous picture in the whole book, looping round at the ends.
+// The page behind stays where it is. Small pictures (decorations) are skipped.
 const stepPicture = async dir => {
     if (stepping) return
-    pictures = picturesInView()
-    const next = pictureAt + dir
-    if (next >= 0 && next < pictures.length) {
-        pictureAt = next
-        showPicture(pictureSrc(pictures[next].el))
-        return
-    }
-    const sections = view.book.sections
-    const here = view.renderer.getContents()?.[0]?.index ?? 0
     stepping = true
     try {
-        for (let i = here + dir; i >= 0 && i < sections.length; i += dir) {
-            const s = sections[i]
-            if (s.linear === 'no' || !s.createDocument) continue
-            let doc
-            try { doc = await s.createDocument() } catch { continue }
-            if (!doc?.querySelector('img, image')) continue
-            await view.goTo(i)
-            for (let t = 0; t < 20; t++) {
-                await new Promise(r => setTimeout(r, 100))
-                pictures = picturesInView()
-                if (pictures.length && pictures.every(p => p.el.tagName.toLowerCase() === 'image' || p.el.complete)) break
-            }
-            if (!pictures.length) continue
-            pictureAt = dir > 0 ? 0 : pictures.length - 1
-            showPicture(pictureSrc(pictures[pictureAt].el))
-            return
+        const g = gallery = await gallery
+        if (!g?.length) return
+        let at = galleryAt < 0 ? (dir > 0 ? -1 : 0) : galleryAt
+        for (let tries = 0; tries < g.length; tries++) {
+            at = (at + dir + g.length) % g.length
+            let src
+            try { src = await gallerySrc(g[at]) } catch { continue }
+            if (!src) continue
+            galleryAt = at
+            if (await showPicture(src)) return
         }
     } finally { stepping = false }
 }
@@ -649,7 +677,8 @@ window.addEventListener('mousemove', e => {
     lbApply()
 })
 window.addEventListener('mouseup', () => { setTimeout(() => lb.drag = null, 0) })
-lbImg().addEventListener('click', e => { e.stopPropagation() })
+// A click on the picture (not a drag) shows or hides the reader's controls.
+lbImg().addEventListener('click', e => { e.stopPropagation(); if (!lb.drag?.moved) post('tap') })
 
 // ---------- reporting where the reader is ----------
 
@@ -887,18 +916,56 @@ window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer
 
 // ---------- start ----------
 
+// The book's view. Scroll mode uses a different engine (one long page), so
+// switching between pages and scrolling makes the view again at the same place.
+let bookFile = null, viewScrolls = false
+const makeView = async () => {
+    viewScrolls = style.flow === 'scrolled'
+    view = document.createElement('foliate-view')
+    view.sableScroll = viewScrolls
+    view.addEventListener('relocate', onRelocate)
+    view.addEventListener('load', onLoad)
+    document.body.append(view)
+    await view.open(bookFile)
+    chapterLabels()
+}
+// The chapter names on the dividers between parts in scroll mode.
+const chapterLabels = () => {
+    const r = view?.renderer
+    if (!r?.continuous) return
+    const labels = new Map()
+    for (const it of flattenToc(view.book.toc)) {
+        try {
+            const res = view.resolveNavigation(it.href)
+            if (res && !labels.has(res.index) && it.label) labels.set(res.index, it.label)
+        } catch { }
+    }
+    r.labels = labels
+    r.refreshLabels()
+}
+let remaking = false
+const remakeView = async () => {
+    if (remaking || !view || !bookFile) return
+    remaking = true
+    try {
+        const cfi = view.lastLocation?.cfi
+        gallery = null
+        view.close()
+        view.remove()
+        await makeView()
+        applyStyle()
+        await view.init({ lastLocation: cfi ?? null })
+    } finally { remaking = false }
+}
+
 const main = async () => {
     const init = await (await fetch(`${base}/init/${token}`)).json()
     style = init.style
     theme = init.theme
     applyTheme()
     const blob = await (await fetch(`${base}/book/${token}`)).blob()
-    const file = new File([blob], init.fileName)
-    view = document.createElement('foliate-view')
-    view.addEventListener('relocate', onRelocate)
-    view.addEventListener('load', onLoad)
-    document.body.append(view)
-    await view.open(file)
+    bookFile = new File([blob], init.fileName)
+    await makeView()
     $('#message')?.remove()
     applyStyle()
     const book = view.book

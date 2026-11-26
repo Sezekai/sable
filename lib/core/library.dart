@@ -433,8 +433,19 @@ class Library extends ChangeNotifier {
     changed();
   }
 
-  /// These volumes become a series, in this order.
-  void makeSeries(String name, List<Volume> ordered) {
+  /// These volumes become a series, in this order. Renamed from [fromKey]:
+  /// its description and cover come along.
+  void makeSeries(String name, List<Volume> ordered, {String? fromKey}) {
+    final to = normKey(name);
+    if (fromKey != null && fromKey != to && _seriesInfo.containsKey(fromKey)) {
+      final old = _seriesInfo[fromKey]!;
+      final n = infoFor(to);
+      n.description ??= old.description;
+      n.foundDescription ??= old.foundDescription;
+      n.cover ??= old.cover;
+      n.coverPos ??= old.coverPos;
+      Db.I.saveSeriesInfo(n);
+    }
     for (var i = 0; i < ordered.length; i++) {
       for (final f in ordered[i].files) {
         f
@@ -453,6 +464,25 @@ class Library extends ChangeNotifier {
   void saveInfo(SeriesInfo i) {
     _seriesInfo[i.key] = i;
     Db.I.saveSeriesInfo(i);
+    changed();
+  }
+
+  /// A description picked from what was found online.
+  void setFoundDescription(Volume v, String text) {
+    for (final f in v.files) {
+      f.foundDescription = text;
+      Db.I.updateExtras(f);
+    }
+    changed();
+  }
+
+  /// Where the cover is framed ("x,y"), or null for the middle.
+  void setCoverPos(Volume v, String? pos) {
+    for (final f in v.files) {
+      f.coverPos = pos;
+      Db.I.updateExtras(f);
+    }
+    Covers.I.changedNow();
     changed();
   }
 

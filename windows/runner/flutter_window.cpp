@@ -28,7 +28,9 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
+    // Sable shows (and maximises) its window itself; showing it "normal"
+    // here would undo the maximise.
+    if (!::IsWindowVisible(GetHandle())) this->Show();
   });
 
   // Flutter can complete the first frame before the "show window" callback is

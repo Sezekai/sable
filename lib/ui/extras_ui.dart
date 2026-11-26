@@ -10,6 +10,7 @@ import '../core/db.dart';
 import '../core/extras.dart';
 import '../core/jobs.dart';
 import '../core/library.dart';
+import '../core/parse.dart';
 import '../core/platform.dart';
 import 'widgets.dart';
 
@@ -191,7 +192,9 @@ class _CoverDialogState extends State<_CoverDialog> {
 
 /// Make a series from these books, or edit one: its name and the order of
 /// its books (drag to reorder). Returns true when saved.
-Future<bool> seriesDialog(BuildContext context, {required String name, required List<Volume> volumes, bool isNew = false}) async {
+/// Returns the series' key (it changes with the name), or null if cancelled.
+Future<String?> seriesDialog(BuildContext context, {required String name, required List<Volume> volumes, bool isNew = false}) async {
+  final fromKey = isNew ? null : normKey(name);
   final ctl = TextEditingController(text: name);
   final order = [...volumes];
   final ok = await showDialog<bool>(
@@ -248,9 +251,9 @@ Future<bool> seriesDialog(BuildContext context, {required String name, required 
       ),
     ),
   );
-  if (ok != true) return false;
-  Library.I.makeSeries(ctl.text.trim(), order);
-  return true;
+  if (ok != true) return null;
+  Library.I.makeSeries(ctl.text.trim(), order, fromKey: fromKey);
+  return normKey(ctl.text.trim());
 }
 
 /// Copies of one book (formats or versions): pick which opens first, read any.
@@ -309,3 +312,365 @@ class CopiesBox extends StatelessWidget {
     );
   }
 }
+
+// ---------------- looking things up by hand ----------------
+
+/// The search part of the look-up dialogs: title, author, where to look.
+class _SearchBar extends StatelessWidget {
+  const _SearchBar({required this.title, required this.author, required this.source, required this.onSource, required this.onSearch});
+  final TextEditingController title;
+  final TextEditingController author;
+  final FindSource source;
+  final ValueChanged<FindSource> onSource;
+  final VoidCallback onSearch;
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Row(
+        children: [
+          Expanded(flex: 3, child: Field(controller: title, hint: 'Title (change it to search again)', onSubmitted: (_) => onSearch())),
+          const SizedBox(width: 8),
+          Expanded(flex: 2, child: Field(controller: author, hint: 'Author (optional)', onSubmitted: (_) => onSearch())),
+          const SizedBox(width: 8),
+          Btn.primary('Search', icon: Icons.search, onTap: onSearch),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Seg<FindSource>(value: source, items: [for (final s in FindSource.values) (s, s.label)], onChanged: onSource),
+    ],
+  );
+}
+
+/// Finds descriptions online and lets you pick one. Returns the text, or null.
+Future<String?> findDescriptionDialog(BuildContext context, {required String title, String? author}) {
+  final t = TextEditingController(text: title);
+  final a = TextEditingController(text: author ?? '');
+  var source = FindSource.all;
+  List<Found>? results;
+  var busy = false;
+  var started = false;
+  return showDialog<String>(
+    context: context,
+    barrierColor: Colors.black54,
+    builder: (c) => StatefulBuilder(
+      builder: (c, set) {
+        Future<void> run() async {
+          set(() => busy = true);
+          final r = await Lookup.search(t.text, a.text, source: source);
+          if (c.mounted) {
+            set(() {
+              results = r;
+              busy = false;
+            });
+          }
+        }
+
+        if (!started) {
+          started = true;
+          Future.microtask(run);
+        }
+        return AppDialog(
+          title: 'Find a description',
+          width: 760,
+          body: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SearchBar(title: t, author: a, source: source, onSource: (v) => set(() => source = v), onSearch: run),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 420,
+                child: busy
+                    ? Center(child: Text('Searching…', style: ts(c: tk.sec)))
+                    : (results == null || results!.isEmpty)
+                    ? Center(child: Text('Nothing found. Try a shorter title, without the volume or subtitle, or another service.', style: ts(c: tk.sec)))
+                    : ListView(
+                        children: [
+                          for (final f in results!)
+                            Hoverable(
+                              builder: (h) => GestureDetector(
+                                onTap: () => Navigator.pop(c, f.text),
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: Container(
+                                    margin: const EdgeInsets.only(bottom: 6),
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: h ? tk.raised : tk.panel,
+                                      borderRadius: BorderRadius.circular(lk.rControl + 2),
+                                      border: Border.all(color: tk.line),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                f.author.isEmpty ? f.title : '${f.title} · ${f.author}',
+                                                style: ts(w: FontWeight.w600),
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            Text(f.source, style: ts(c: tk.faint, size: 11.5)),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(f.text!, maxLines: 4, overflow: TextOverflow.ellipsis, style: ts(c: tk.sec, size: 12.5)),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+          actions: [Btn('Cancel', onTap: () => Navigator.pop(c))],
+        );
+      },
+    ),
+  );
+}
+
+/// Finds covers online and lets you pick one; it's saved as a cover. Returns its key, or null.
+Future<String?> findCoverDialog(BuildContext context, {required String title, String? author}) {
+  final t = TextEditingController(text: title);
+  final a = TextEditingController(text: author ?? '');
+  var source = FindSource.all;
+  List<Found>? results;
+  var busy = false;
+  var saving = false;
+  var started = false;
+  return showDialog<String>(
+    context: context,
+    barrierColor: Colors.black54,
+    builder: (c) => StatefulBuilder(
+      builder: (c, set) {
+        Future<void> run() async {
+          set(() => busy = true);
+          final r = await Lookup.search(t.text, a.text, source: source, covers: true);
+          if (c.mounted) {
+            set(() {
+              results = r;
+              busy = false;
+            });
+          }
+        }
+
+        Future<void> pick(Found f) async {
+          set(() => saving = true);
+          final k = await CustomCovers.fromUrl(f.image!) ?? (f.thumb == null ? null : await CustomCovers.fromUrl(f.thumb!));
+          if (!c.mounted) return;
+          set(() => saving = false);
+          if (k == null) {
+            toast('That picture couldn\'t be downloaded. Try another.', ToastKind.error);
+            return;
+          }
+          Navigator.pop(c, k);
+        }
+
+        if (!started) {
+          started = true;
+          Future.microtask(run);
+        }
+        return AppDialog(
+          title: 'Find a cover',
+          width: 860,
+          body: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SearchBar(title: t, author: a, source: source, onSource: (v) => set(() => source = v), onSearch: run),
+              const SizedBox(height: 10),
+              SizedBox(
+                height: 460,
+                child: busy || saving
+                    ? Center(child: Text(saving ? 'Saving the cover…' : 'Searching…', style: ts(c: tk.sec)))
+                    : (results == null || results!.isEmpty)
+                    ? Center(child: Text('Nothing found. Try a shorter title, or another service.', style: ts(c: tk.sec)))
+                    : GridView.builder(
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 150,
+                          mainAxisExtent: 262,
+                          crossAxisSpacing: 10,
+                          mainAxisSpacing: 10,
+                        ),
+                        itemCount: results!.length,
+                        itemBuilder: (_, i) {
+                          final f = results![i];
+                          return Hoverable(
+                            builder: (h) => GestureDetector(
+                              onTap: () => pick(f),
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    AspectRatio(
+                                      aspectRatio: 2 / 3,
+                                      child: Container(
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(lk.rControl),
+                                          border: Border.all(color: h ? lk.acc : tk.line, width: h ? 2 : 1),
+                                          color: tk.raised,
+                                        ),
+                                        clipBehavior: Clip.antiAlias,
+                                        child: Image.network(
+                                          f.thumb ?? f.image!,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (_, _, _) => Center(child: Icon(Icons.broken_image_outlined, color: tk.faint)),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(f.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: ts(size: 11.5, w: FontWeight.w600)),
+                                    Text(f.source, style: ts(size: 10.5, c: tk.faint)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+          actions: [Btn('Cancel', onTap: () => Navigator.pop(c))],
+        );
+      },
+    ),
+  );
+}
+
+/// Moves a cover inside its 2:3 frame (drag it, or use the buttons). Returns
+/// "x,y", '' for the middle, or null if cancelled.
+Future<String?> reframeDialog(BuildContext context, {required File file, String? pos}) {
+  var x = 0.0, y = 0.0;
+  if (pos != null) {
+    final p = pos.split(',');
+    x = double.tryParse(p.first) ?? 0;
+    y = p.length > 1 ? double.tryParse(p[1]) ?? 0 : 0;
+  }
+  const w = 260.0, h = 390.0;
+  return showDialog<String>(
+    context: context,
+    barrierColor: Colors.black54,
+    builder: (c) => StatefulBuilder(
+      builder: (c, set) {
+        String value() => '${x.toStringAsFixed(3)},${y.toStringAsFixed(3)}';
+        Widget preset(String label, double nx, double ny) => Btn(label, dense: true, onTap: () => set(() {
+          x = nx;
+          y = ny;
+        }));
+        return AppDialog(
+          title: 'Frame the cover',
+          width: 520,
+          onEnter: () => Navigator.pop(c, value()),
+          body: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              GestureDetector(
+                // Dragging moves the picture under the frame.
+                onPanUpdate: (d) => set(() {
+                  x = (x - d.delta.dx / (w / 2)).clamp(-1.0, 1.0);
+                  y = (y - d.delta.dy / (h / 2)).clamp(-1.0, 1.0);
+                }),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.move,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(lk.rPanel),
+                    child: SizedBox(
+                      width: w,
+                      height: h,
+                      child: Image.file(file, fit: BoxFit.cover, alignment: Alignment(x, y), gaplessPlayback: true),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Drag the picture to choose what shows. Long pictures move up and down; wide ones left and right.',
+                        style: ts(c: tk.sec, size: 12.5)),
+                    const SizedBox(height: 12),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      preset('Top', x, -1),
+                      preset('Middle', x, 0),
+                      preset('Bottom', x, 1),
+                      preset('Left', -1, y),
+                      preset('Centre', 0, y),
+                      preset('Right', 1, y),
+                    ]),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            Btn.ghost('Reset', onTap: () => Navigator.pop(c, '')),
+            Btn('Cancel', onTap: () => Navigator.pop(c)),
+            Btn.primary('Save', onTap: () => Navigator.pop(c, value())),
+          ],
+        );
+      },
+    ),
+  );
+}
+
+/// What to do with a cover.
+enum CoverAction { find, change, frame, reset }
+
+Future<CoverAction?> coverMenu(BuildContext context, {required bool custom}) => showDialog<CoverAction>(
+  context: context,
+  barrierColor: Colors.black54,
+  builder: (c) {
+    Widget item(CoverAction a, IconData icon, String label, String sub) => Hoverable(
+      builder: (h) => GestureDetector(
+        onTap: () => Navigator.pop(c, a),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(color: h ? tk.raised : null, borderRadius: BorderRadius.circular(lk.rControl)),
+            child: Row(
+              children: [
+                Icon(icon, size: 20, color: tk.sec),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(label, style: ts(w: FontWeight.w600)),
+                      Text(sub, style: ts(c: tk.faint, size: 12)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    return AppDialog(
+      title: 'Cover',
+      width: 440,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          item(CoverAction.find, Icons.travel_explore, 'Find online', 'Choose from Apple Books, Google Books and Open Library'),
+          item(CoverAction.change, Icons.image_outlined, 'Use a picture', 'Paste, drag one in, or choose a file'),
+          item(CoverAction.frame, Icons.crop, 'Frame it', 'Choose which part shows (top, middle, bottom…)'),
+          if (custom) item(CoverAction.reset, Icons.restart_alt, 'Use the book\'s own', 'Back to the cover in the file'),
+        ],
+      ),
+      actions: [Btn('Cancel', onTap: () => Navigator.pop(c))],
+    );
+  },
+);

@@ -31,5 +31,6 @@ void main() {
       await t.pump(const Duration(milliseconds: 16));
     }
     expect(c.offset, closeTo(1210, 2));
+    await t.pump(const Duration(milliseconds: 400)); // the "still wheeling" moment ends
   });
 }

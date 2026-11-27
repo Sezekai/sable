@@ -60,9 +60,10 @@ class _BtnState extends State<Btn> {
         grad = lk.grad;
         fg = lk.onAcc;
       case BtnKind.normal:
-        bg = hover ? tk.raised2 : tk.raised;
+        // Hovered: lighter, with an accent edge, so it's clear it can be pressed.
+        bg = hover ? Color.lerp(tk.raised2, Colors.white, 0.04) : tk.raised;
         fg = tk.text;
-        border = Border.all(color: tk.line);
+        border = Border.all(color: hover && enabled ? lk.acc.withValues(alpha: 0.65) : tk.line2);
       case BtnKind.ghost:
         bg = hover ? tk.raised : null;
         fg = tk.sec;
@@ -160,9 +161,21 @@ class _Hover extends StatefulWidget {
 
 class _HoverState extends State<_Hover> {
   bool h = false;
+  // While the wheel is scrolling, things passing under a still pointer don't
+  // light up one after another (as in a web browser); moving the mouse does.
+  void _on() {
+    if (!h && !SmoothScroll.wheeling) setState(() => h = true);
+  }
+
   @override
-  Widget build(BuildContext context) =>
-      MouseRegion(onEnter: (_) => setState(() => h = true), onExit: (_) => setState(() => h = false), child: widget.builder(h));
+  Widget build(BuildContext context) => MouseRegion(
+    onEnter: (_) => _on(),
+    onHover: (_) => _on(),
+    onExit: (_) {
+      if (h) setState(() => h = false);
+    },
+    child: widget.builder(h),
+  );
 }
 
 class Hoverable extends StatelessWidget {
@@ -238,7 +251,12 @@ class Seg<T> extends StatelessWidget {
 
 /// A drop-down styled like the other controls.
 class Drop<T> extends StatelessWidget {
-  const Drop({super.key, required this.value, required this.items, required this.onChanged, this.width});
+  const Drop({super.key, required this.value, required this.items, required this.onChanged, this.width, this.icon, this.tooltip, this.prefix});
+  final String? prefix;
+
+  /// Shown before the choice, to say what it's for (such as sorting).
+  final IconData? icon;
+  final String? tooltip;
   final T value;
   final List<(T, String)> items;
   final ValueChanged<T> onChanged;
@@ -247,7 +265,7 @@ class Drop<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final label = items.where((e) => e.$1 == value).map((e) => e.$2).firstOrNull ?? '';
     return PopupMenuButton<T>(
-      tooltip: '',
+      tooltip: tooltip ?? '',
       onSelected: onChanged,
       itemBuilder: (_) => [
         for (final it in items)
@@ -269,8 +287,13 @@ class Drop<T> extends StatelessWidget {
         child: Row(
           mainAxisSize: width == null ? MainAxisSize.min : MainAxisSize.max,
           children: [
+            if (icon != null) ...[Icon(icon, size: 15, color: tk.sec), const SizedBox(width: 6)],
             Flexible(
-              child: Text(label, style: ts(), overflow: TextOverflow.ellipsis),
+              child: Text.rich(
+                TextSpan(children: [if (prefix != null) TextSpan(text: prefix, style: ts(c: tk.sec)), TextSpan(text: label)]),
+                style: ts(),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             const SizedBox(width: 4),
             Icon(Icons.expand_more, size: 14, color: tk.sec),
@@ -309,8 +332,10 @@ class Field extends StatelessWidget {
   final bool mono;
   @override
   Widget build(BuildContext context) {
+    // A little taller than buttons, so text (and its descenders) has room.
+    final h = lk.hControl + 6;
     return SizedBox(
-      height: lk.hControl,
+      height: h,
       width: width,
       child: TextField(
         controller: controller,
@@ -324,11 +349,11 @@ class Field extends StatelessWidget {
         decoration: InputDecoration(
           isDense: true,
           // The box fills the whole control height, so it lines up with the buttons beside it.
-          constraints: BoxConstraints.tightFor(height: lk.hControl),
+          constraints: BoxConstraints.tightFor(height: h),
           hintText: hint,
           hintStyle: ts(c: tk.faint),
           prefixIcon: icon == null ? null : Icon(icon, size: 16, color: tk.faint),
-          prefixIconConstraints: BoxConstraints(minWidth: 30, minHeight: lk.hControl),
+          prefixIconConstraints: BoxConstraints(minWidth: 32, minHeight: lk.hControl + 6),
           suffixIcon: onClear == null || controller == null
               ? null
               : ListenableBuilder(
@@ -346,7 +371,7 @@ class Field extends StatelessWidget {
                           ),
                         ),
                 ),
-          suffixIconConstraints: BoxConstraints(minWidth: 30, minHeight: lk.hControl),
+          suffixIconConstraints: BoxConstraints(minWidth: 32, minHeight: lk.hControl + 6),
           filled: true,
           fillColor: tk.field,
           contentPadding: const EdgeInsets.symmetric(horizontal: 10),
@@ -1151,6 +1176,16 @@ class _ColourDialogState extends State<_ColourDialog> {
 /// stutters between notches. Touch, trackpads and dragging work as usual.
 class SmoothScroll extends ScrollController {
   SmoothScroll({this.speed = 2.2, this.ctrlZooms = false});
+
+  /// True while a wheel scroll is gliding (and a moment after).
+  static bool wheeling = false;
+  static Timer? _wheelEnd;
+  static void _wheel() {
+    wheeling = true;
+    _wheelEnd?.cancel();
+    _wheelEnd = Timer(const Duration(milliseconds: 350), () => wheeling = false);
+  }
+
   final double speed;
 
   /// Ctrl+wheel is used for something else (such as cover size).
@@ -1174,6 +1209,7 @@ class _SmoothPosition extends ScrollPositionWithSingleContext {
     if (delta == 0) return;
     if (owner.ctrlZooms && HardwareKeyboard.instance.isControlPressed) return;
     if (!hasContentDimensions) return;
+    SmoothScroll._wheel();
     // Turning the other way starts from where it is now.
     if (!_gliding || (delta > 0) != (_goal > pixels)) _goal = pixels;
     _goal = (_goal + delta * owner.speed).clamp(minScrollExtent, maxScrollExtent);
@@ -1191,16 +1227,23 @@ class _SmoothPosition extends ScrollPositionWithSingleContext {
     if (!_gliding || activity is! IdleScrollActivity || !hasContentDimensions) return _stop();
     final dt = _last == Duration.zero ? 16.0 : (now - _last).inMicroseconds / 1000.0;
     _last = now;
-    final goal = _goal.clamp(minScrollExtent, maxScrollExtent);
+    final goal = _snap(_goal.clamp(minScrollExtent, maxScrollExtent));
     final left = goal - pixels;
-    if (left.abs() < 0.5) {
+    if (left.abs() < 0.75) {
       jumpTo(goal);
       return _stop();
     }
-    // Eases toward the goal: about 90% of the way in 150 ms.
+    // Eases toward the goal: about 90% of the way in 150 ms. Each step lands on
+    // a whole screen pixel, so pictures don't shimmer as they move.
     final f = 1 - math.exp(-dt.clamp(1, 50) / 65);
-    jumpTo(pixels + left * f);
+    SmoothScroll._wheel();
+    var next = _snap(pixels + left * f);
+    if (next == pixels) next = _snap(pixels + left.sign / _dpr);
+    jumpTo(next);
   }
+
+  double get _dpr => WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
+  double _snap(double v) => (v * _dpr).roundToDouble() / _dpr;
 
   void _stop() {
     _gliding = false;

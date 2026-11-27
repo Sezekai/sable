@@ -1,6 +1,8 @@
+import 'dart:math' as math;
 import 'dart:io';
 
 import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
 
@@ -37,12 +39,90 @@ void showInFolder(Book b) {
   }
 }
 
-/// A column with a thin line down its left side, between the page's columns.
-Widget _ruled(Widget child, {double gap = 24}) => Container(
-  padding: EdgeInsets.only(left: gap),
-  decoration: BoxDecoration(border: Border(left: BorderSide(color: tk.line))),
-  child: child,
-);
+/// The page's columns: the cover, the details, and (when wide) a third column,
+/// with a line between each pair as long as the taller of the two.
+class _Cols extends StatefulWidget {
+  const _Cols({
+    required this.coverW,
+    required this.cover,
+    required this.main,
+    required this.side,
+    required this.wide,
+    this.flexMain = 11,
+    this.flexSide = 9,
+  });
+  final double coverW;
+  final Widget cover;
+  final Widget main;
+  final Widget side;
+  final bool wide;
+  final int flexMain;
+  final int flexSide;
+  @override
+  State<_Cols> createState() => _ColsState();
+}
+
+class _ColsState extends State<_Cols> {
+  final Map<int, double> _h = {};
+  Widget _m(int i, Widget c) => _Measure(
+    onHeight: (h) {
+      if (mounted && (_h[i] ?? -1) != h) setState(() => _h[i] = h);
+    },
+    child: c,
+  );
+  Widget _line(double h, double gap) => Container(
+    width: 1,
+    height: h,
+    margin: EdgeInsets.symmetric(horizontal: gap),
+    color: tk.line2,
+  );
+  double _max(int a, int b) => math.max(_h[a] ?? 0, _h[b] ?? 0);
+
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      SizedBox(width: widget.coverW, child: _m(0, widget.cover)),
+      _line(_max(0, 1), 22),
+      if (widget.wide) ...[
+        Expanded(flex: widget.flexMain, child: _m(1, widget.main)),
+        _line(_max(1, 2), 20),
+        Expanded(flex: widget.flexSide, child: _m(2, widget.side)),
+      ] else
+        Expanded(
+          child: _m(
+            1,
+            Column(crossAxisAlignment: CrossAxisAlignment.start, children: [widget.main, const SizedBox(height: 20), widget.side]),
+          ),
+        ),
+    ],
+  );
+}
+
+/// Tells its parent how tall its child turned out (after each layout).
+class _Measure extends SingleChildRenderObjectWidget {
+  const _Measure({required this.onHeight, super.child});
+  final ValueChanged<double> onHeight;
+  @override
+  RenderObject createRenderObject(BuildContext context) => _RenderMeasure(onHeight);
+  @override
+  void updateRenderObject(BuildContext context, _RenderMeasure r) => r.onHeight = onHeight;
+}
+
+class _RenderMeasure extends RenderProxyBox {
+  _RenderMeasure(this.onHeight);
+  ValueChanged<double> onHeight;
+  double? _last;
+  @override
+  void performLayout() {
+    super.performLayout();
+    final h = size.height;
+    if (h != _last) {
+      _last = h;
+      WidgetsBinding.instance.addPostFrameCallback((_) => onHeight(h));
+    }
+  }
+}
 
 Widget _crumbs(List<(String, VoidCallback?)> items) => Row(
   children: [
@@ -229,41 +309,26 @@ class BookPage extends StatelessWidget {
     final twoCols = w - cw - 28 >= 900;
     final colA = _main(context, v);
     final colB = _side(context, v);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: cw,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _coverBox(b, cw, progress: v.progress),
-              const SizedBox(height: 12),
-              Btn.primary(_readLabel(v), icon: Icons.auto_stories, big: true, onTap: () => openBook(context, b)),
-              for (final f in v.formats.where((x) => x.format != b.format))
-                Padding(
-                  padding: const EdgeInsets.only(top: 6),
-                  child: Btn('Read the ${f.format.toUpperCase()}', icon: Icons.description_outlined, onTap: () => openBook(context, f)),
-                ),
-              const SizedBox(height: 6),
-              Btn.ghost('Show in folder', icon: Icons.folder_open_outlined, onTap: () => showInFolder(b)),
-            ],
-          ),
-        ),
-        const SizedBox(width: 24),
-        Expanded(
-          child: _ruled(twoCols
-              ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(flex: 11, child: colA),
-                    const SizedBox(width: 20),
-                    Expanded(flex: 9, child: _ruled(colB, gap: 20)),
-                  ],
-                )
-              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [colA, const SizedBox(height: 20), colB])),
-        ),
-      ],
+    return _Cols(
+      coverW: cw,
+      wide: twoCols,
+      cover: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _coverBox(b, cw, progress: v.progress),
+          const SizedBox(height: 12),
+          Btn.primary(_readLabel(v), icon: Icons.auto_stories, big: true, onTap: () => openBook(context, b)),
+          for (final f in v.formats.where((x) => x.format != b.format))
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Btn('Read the ${f.format.toUpperCase()}', icon: Icons.description_outlined, onTap: () => openBook(context, f)),
+            ),
+          const SizedBox(height: 6),
+          Btn.ghost('Show in folder', icon: Icons.folder_open_outlined, onTap: () => showInFolder(b)),
+        ],
+      ),
+      main: colA,
+      side: colB,
     );
   }
 
@@ -552,7 +617,7 @@ Future<void> editDetails(BuildContext context, Book b) async {
     builder: (c) => StatefulBuilder(
       builder: (c, set) => AppDialog(
         title: 'Edit details',
-        width: 520,
+        width: 700,
         body: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -842,34 +907,21 @@ class _SeriesPageState extends State<SeriesPage> {
       children: [_head(e, editions), const SizedBox(height: 12), _actions(e), const SizedBox(height: 18), _desc(e)],
     );
     final books = _books(e);
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: cw,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _coverBox(e.volumes.first.any, cw, coverKey: _info.cover, pos: _info.coverPos),
-              const SizedBox(height: 12),
-              _readBtn(e),
-            ],
-          ),
-        ),
-        const SizedBox(width: 24),
-        Expanded(
-          child: _ruled(twoCols
-              ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(flex: 9, child: info),
-                    const SizedBox(width: 20),
-                    Expanded(flex: 11, child: _ruled(books, gap: 20)),
-                  ],
-                )
-              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [info, const SizedBox(height: 18), books])),
-        ),
-      ],
+    return _Cols(
+      coverW: cw,
+      wide: twoCols,
+      flexMain: 9,
+      flexSide: 11,
+      cover: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _coverBox(e.volumes.first.any, cw, coverKey: _info.cover, pos: _info.coverPos),
+          const SizedBox(height: 12),
+          _readBtn(e),
+        ],
+      ),
+      main: info,
+      side: books,
     );
   }
 

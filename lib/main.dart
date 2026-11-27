@@ -18,6 +18,7 @@ import 'core/log.dart';
 import 'core/paths.dart';
 import 'core/samples.dart';
 import 'core/platform.dart';
+import 'bench.dart';
 import 'core/parse.dart';
 import 'core/server.dart';
 import 'core/settings.dart';
@@ -200,6 +201,11 @@ Future<void> main(List<String> args) async {
   runApp(RepaintBoundary(key: _shotKey, child: const ExcludeSemantics(child: SableApp())));
 
   WidgetsBinding.instance.addPostFrameCallback((_) async {
+    final bench = Platform.environment['SABLE_BENCH'];
+    if (bench != null) {
+      await runScrollBench(bench);
+      return;
+    }
     if (selftest) {
       await _runSelftest();
       return;

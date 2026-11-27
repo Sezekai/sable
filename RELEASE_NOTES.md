@@ -1,20 +1,26 @@
-Sable 1.5.1
+Sable 1.5.2
 
-Reader
-- Scroll mode: one turn of the wheel now moves a little (about 55 pixels), and it speeds up the more you keep turning (up to five times as far per turn). It glides smoothly either way.
-- Scroll mode: the gap between chapters is small now. Blank space a book puts before or after a chapter is left out, so chapters follow with just the divider between them.
-- Pictures: the arrow keys (and the mouse's side buttons) now really go through the book's pictures. Before, the app took the arrow keys first and turned the page in the background.
-- Search: found words are highlighted in the accent colour instead of boxed in red, and an × in the search box clears the search and its highlights.
-- The mouse's back button no longer leaves full screen (Esc, F and F11 still do).
-- The pointer hides almost as soon as the mouse stops over the page.
+Library scrolling
+- Found and fixed the cause of the jumpy, stop-start scrolling: every tile in the view was being rebuilt on every frame of a scroll (since 1.4.0's cover grid). With small covers that took far longer than a frame. In a test library of 1,200 books, a frame now takes about a tenth of the time.
+- Scrolling lands on whole screen pixels, so covers no longer shimmer or "tear" as they move.
+- While the wheel is scrolling, tiles passing under the pointer don't light up one after another (as in a web browser). Moving the mouse brings the highlight back.
+- Titles are measured more cheaply, so new rows appear without a hitch.
 
 Library
-- Covers no longer flicker or pop in while scrolling. Covers are kept in memory and read a couple of screens ahead; one that's read for the first time fades in.
-- The search box has an × to clear it.
-- A book inside a ZIP (or other archive) that's also there unpacked shows only once, as the unpacked file.
-- Back (the mouse's side button) now only steps back through books and series. Once you're on the library, history, stats or settings, there's nothing further back, and it doesn't hop between sections.
-- Series pages have a Read (or Continue) button on each book.
-- History: clicking an entry opens the book's page (the play button reads it).
-- Lines and dividers are a little lighter. There's a line between the side menu and the page, and between the columns of book and series pages.
+- Hovering over a book now grows its cover a touch everywhere (as in Continue reading), with a lighter tile and a thin outline in the accent gradient.
+- The sort menu says what it is: a sort icon and "Sort: …".
+- Buttons light up with an accent edge when you hover over them.
+- Text and search boxes are a little taller, so text has room, and the Edit details window is wider.
 
-PC: replace the `App` folder in `E:\Pictures\Sable\` with the new one. Phone: install `Sable-v1.5.1-android.apk` over the old one.
+Book and series pages
+- The lines between the columns are as long as the taller of the two columns beside them (so the one by the cover ends at the Read button when the next column is short), and a little lighter.
+
+History
+- Every other row is a slightly different shade, and there's a card view (Rows / Cards beside the search).
+- Continue has a button outline and lights up when hovered.
+- Clear history moved to Settings → Reset → Reading history.
+
+Covers
+- Frame it: drag the picture to move it and use the mouse wheel (or pinch) to zoom in. No more buttons.
+
+PC: replace the `App` folder in `E:\Pictures\Sable\` with the new one. Phone: install `Sable-v1.5.2-android.apk` over the old one.

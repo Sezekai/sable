@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:pasteboard/pasteboard.dart';
 
@@ -165,24 +166,25 @@ class _CoverDialogState extends State<_CoverDialog> {
                 },
                 child: drop,
               ),
-            if (error != null) ...[
-              const SizedBox(height: 8),
-              Text(error!, style: ts(c: tk.danger)),
-            ],
+            if (error != null) ...[const SizedBox(height: 8), Text(error!, style: ts(c: tk.danger))],
           ],
         ),
         actions: [
           if (widget.canReset) Btn.ghost('Use the book\'s own', onTap: () => Navigator.pop(context, '')),
           if (!isPhone) Btn('Paste', icon: Icons.content_paste, onTap: busy ? null : _paste),
-          Btn('Choose a picture…', icon: Icons.folder_open_outlined, onTap: busy
-              ? null
-              : () => _use(() async {
+          Btn(
+            'Choose a picture…',
+            icon: Icons.folder_open_outlined,
+            onTap: busy
+                ? null
+                : () => _use(() async {
                     final r = await FilePicker.pickFiles(type: FileType.image);
                     final f = r.firstOrNull;
                     if (f == null) throw 'No picture chosen.';
                     final Uint8List bytes = await f.xFile.readAsBytes();
                     return CustomCovers.save(bytes);
-                  })),
+                  }),
+          ),
           Btn('Cancel', onTap: () => Navigator.pop(context)),
         ],
       ),
@@ -232,8 +234,13 @@ Future<String?> seriesDialog(BuildContext context, {required String name, requir
                       decoration: BoxDecoration(color: tk.raised, borderRadius: BorderRadius.circular(lk.rControl)),
                       child: Row(
                         children: [
-                          SizedBox(width: 30, child: Text('${i + 1}', style: ts(c: tk.faint, tab: true))),
-                          Expanded(child: Text(v.primary.displayTitle, style: ts(), overflow: TextOverflow.ellipsis)),
+                          SizedBox(
+                            width: 30,
+                            child: Text('${i + 1}', style: ts(c: tk.faint, tab: true)),
+                          ),
+                          Expanded(
+                            child: Text(v.primary.displayTitle, style: ts(), overflow: TextOverflow.ellipsis),
+                          ),
                           Icon(Icons.drag_indicator, size: 18, color: tk.faint),
                         ],
                       ),
@@ -272,8 +279,15 @@ class CopiesBox extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(child: Text('Copies of this book', style: ts(w: FontWeight.w600))),
-              Btn.ghost('Separate', dense: true, tooltip: 'These aren\'t the same book: show them apart', onTap: () => Library.I.separate(v)),
+              Expanded(
+                child: Text('Copies of this book', style: ts(w: FontWeight.w600)),
+              ),
+              Btn.ghost(
+                'Separate',
+                dense: true,
+                tooltip: 'These aren\'t the same book: show them apart',
+                onTap: () => Library.I.separate(v),
+              ),
             ],
           ),
           Text('Reading progress is shared between them. The default opens when you press Read.', style: ts(c: tk.faint, size: 12)),
@@ -293,7 +307,10 @@ class CopiesBox extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
                     decoration: BoxDecoration(color: tk.raised, borderRadius: BorderRadius.circular(6)),
-                    child: Text(f.format.toUpperCase(), style: ts(size: 11, w: FontWeight.w700, c: tk.sec)),
+                    child: Text(
+                      f.format.toUpperCase(),
+                      style: ts(size: 11, w: FontWeight.w700, c: tk.sec),
+                    ),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
@@ -329,9 +346,15 @@ class _SearchBar extends StatelessWidget {
     children: [
       Row(
         children: [
-          Expanded(flex: 3, child: Field(controller: title, hint: 'Title (change it to search again)', onSubmitted: (_) => onSearch())),
+          Expanded(
+            flex: 3,
+            child: Field(controller: title, hint: 'Title (change it to search again)', onSubmitted: (_) => onSearch()),
+          ),
           const SizedBox(width: 8),
-          Expanded(flex: 2, child: Field(controller: author, hint: 'Author (optional)', onSubmitted: (_) => onSearch())),
+          Expanded(
+            flex: 2,
+            child: Field(controller: author, hint: 'Author (optional)', onSubmitted: (_) => onSearch()),
+          ),
           const SizedBox(width: 8),
           Btn.primary('Search', icon: Icons.search, onTap: onSearch),
         ],
@@ -382,9 +405,16 @@ Future<String?> findDescriptionDialog(BuildContext context, {required String tit
               SizedBox(
                 height: 420,
                 child: busy
-                    ? Center(child: Text('Searching…', style: ts(c: tk.sec)))
+                    ? Center(
+                        child: Text('Searching…', style: ts(c: tk.sec)),
+                      )
                     : (results == null || results!.isEmpty)
-                    ? Center(child: Text('Nothing found. Try a shorter title, without the volume or subtitle, or another service.', style: ts(c: tk.sec)))
+                    ? Center(
+                        child: Text(
+                          'Nothing found. Try a shorter title, without the volume or subtitle, or another service.',
+                          style: ts(c: tk.sec),
+                        ),
+                      )
                     : ListView(
                         children: [
                           for (final f in results!)
@@ -417,7 +447,12 @@ Future<String?> findDescriptionDialog(BuildContext context, {required String tit
                                           ],
                                         ),
                                         const SizedBox(height: 4),
-                                        Text(f.text!, maxLines: 4, overflow: TextOverflow.ellipsis, style: ts(c: tk.sec, size: 12.5)),
+                                        Text(
+                                          f.text!,
+                                          maxLines: 4,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: ts(c: tk.sec, size: 12.5),
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -489,9 +524,13 @@ Future<String?> findCoverDialog(BuildContext context, {required String title, St
               SizedBox(
                 height: 460,
                 child: busy || saving
-                    ? Center(child: Text(saving ? 'Saving the cover…' : 'Searching…', style: ts(c: tk.sec)))
+                    ? Center(
+                        child: Text(saving ? 'Saving the cover…' : 'Searching…', style: ts(c: tk.sec)),
+                      )
                     : (results == null || results!.isEmpty)
-                    ? Center(child: Text('Nothing found. Try a shorter title, or another service.', style: ts(c: tk.sec)))
+                    ? Center(
+                        child: Text('Nothing found. Try a shorter title, or another service.', style: ts(c: tk.sec)),
+                      )
                     : GridView.builder(
                         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                           maxCrossAxisExtent: 150,
@@ -527,7 +566,12 @@ Future<String?> findCoverDialog(BuildContext context, {required String title, St
                                       ),
                                     ),
                                     const SizedBox(height: 4),
-                                    Text(f.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: ts(size: 11.5, w: FontWeight.w600)),
+                                    Text(
+                                      f.title,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: ts(size: 11.5, w: FontWeight.w600),
+                                    ),
                                     Text(f.source, style: ts(size: 10.5, c: tk.faint)),
                                   ],
                                 ),
@@ -546,68 +590,73 @@ Future<String?> findCoverDialog(BuildContext context, {required String title, St
   );
 }
 
-/// Moves a cover inside its 2:3 frame (drag it, or use the buttons). Returns
-/// "x,y", '' for the middle, or null if cancelled.
+/// Frames a cover: drag to move it, use the mouse wheel (or pinch) to zoom.
+/// Returns "x,y,zoom", '' for the whole picture, or null if cancelled.
 Future<String?> reframeDialog(BuildContext context, {required File file, String? pos}) {
-  var x = 0.0, y = 0.0;
-  if (pos != null) {
+  var x = 0.0, y = 0.0, z = 1.0;
+  if (pos != null && pos.isNotEmpty) {
     final p = pos.split(',');
     x = double.tryParse(p.first) ?? 0;
     y = p.length > 1 ? double.tryParse(p[1]) ?? 0 : 0;
+    z = p.length > 2 ? double.tryParse(p[2]) ?? 1 : 1;
   }
-  const w = 260.0, h = 390.0;
+  const w = 300.0, h = 450.0;
+  var startZ = 1.0;
   return showDialog<String>(
     context: context,
     barrierColor: Colors.black54,
     builder: (c) => StatefulBuilder(
       builder: (c, set) {
-        String value() => '${x.toStringAsFixed(3)},${y.toStringAsFixed(3)}';
-        Widget preset(String label, double nx, double ny) => Btn(label, dense: true, onTap: () => set(() {
-          x = nx;
-          y = ny;
-        }));
+        String value() => '${x.toStringAsFixed(3)},${y.toStringAsFixed(3)},${z.toStringAsFixed(3)}';
+        void zoomBy(double f) => set(() => z = (z * f).clamp(1.0, 5.0));
         return AppDialog(
           title: 'Frame the cover',
-          width: 520,
+          width: 380,
           onEnter: () => Navigator.pop(c, value()),
-          body: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          body: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              GestureDetector(
-                // Dragging moves the picture under the frame.
-                onPanUpdate: (d) => set(() {
-                  x = (x - d.delta.dx / (w / 2)).clamp(-1.0, 1.0);
-                  y = (y - d.delta.dy / (h / 2)).clamp(-1.0, 1.0);
-                }),
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.move,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(lk.rPanel),
-                    child: SizedBox(
-                      width: w,
-                      height: h,
-                      child: Image.file(file, fit: BoxFit.cover, alignment: Alignment(x, y), gaplessPlayback: true),
+              Text('Drag to move it. Scroll (or pinch) to zoom in and out.', style: ts(c: tk.sec, size: 12.5)),
+              const SizedBox(height: 12),
+              Listener(
+                onPointerSignal: (e) {
+                  if (e is PointerScrollEvent) {
+                    GestureBinding.instance.pointerSignalResolver.register(e, (_) => zoomBy(e.scrollDelta.dy < 0 ? 1.08 : 1 / 1.08));
+                  }
+                },
+                child: GestureDetector(
+                  onScaleStart: (_) => startZ = z,
+                  onScaleUpdate: (d) => set(() {
+                    if (d.scale != 1) z = (startZ * d.scale).clamp(1.0, 5.0);
+                    // Moving the picture: the further in, the finer each step.
+                    final k = 1 / z;
+                    x = (x - d.focalPointDelta.dx / (w / 2) * k).clamp(-1.0, 1.0);
+                    y = (y - d.focalPointDelta.dy / (h / 2) * k).clamp(-1.0, 1.0);
+                  }),
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.move,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(lk.rPanel),
+                      child: SizedBox(
+                        width: w,
+                        height: h,
+                        child: ClipRect(
+                          child: Transform.scale(
+                            scale: z,
+                            alignment: Alignment(x, y),
+                            child: Image.file(
+                              file,
+                              fit: BoxFit.cover,
+                              alignment: Alignment(x, y),
+                              gaplessPlayback: true,
+                              width: w,
+                              height: h,
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Drag the picture to choose what shows. Long pictures move up and down; wide ones left and right.',
-                        style: ts(c: tk.sec, size: 12.5)),
-                    const SizedBox(height: 12),
-                    Wrap(spacing: 6, runSpacing: 6, children: [
-                      preset('Top', x, -1),
-                      preset('Middle', x, 0),
-                      preset('Bottom', x, 1),
-                      preset('Left', -1, y),
-                      preset('Centre', 0, y),
-                      preset('Right', 1, y),
-                    ]),
-                  ],
                 ),
               ),
             ],
@@ -666,7 +715,7 @@ Future<CoverAction?> coverMenu(BuildContext context, {required bool custom}) => 
         children: [
           item(CoverAction.find, Icons.travel_explore, 'Find online', 'Choose from Apple Books, Google Books and Open Library'),
           item(CoverAction.change, Icons.image_outlined, 'Use a picture', 'Paste, drag one in, or choose a file'),
-          item(CoverAction.frame, Icons.crop, 'Frame it', 'Choose which part shows (top, middle, bottom…)'),
+          item(CoverAction.frame, Icons.crop, 'Frame it', 'Drag and zoom to choose which part shows'),
           if (custom) item(CoverAction.reset, Icons.restart_alt, 'Use the book\'s own', 'Back to the cover in the file'),
         ],
       ),

@@ -4,6 +4,7 @@ import '../core/db.dart';
 import '../core/jobs.dart';
 import '../core/library.dart';
 import '../core/platform.dart';
+import '../core/settings.dart';
 import 'app.dart';
 import 'library_page.dart';
 import 'reader_page.dart';
@@ -52,11 +53,22 @@ class _HistoryPageState extends State<HistoryPage> {
                 )
                 .toList()
               ..sort((a, b) => b.at.compareTo(a.at));
+        final cards = Settings.I.historyCards && !isPhone;
         final rows = <Widget>[];
         String? lastDay;
+        var n = 0;
+        var dayItems = <_Item>[];
+        void flushCards() {
+          if (dayItems.isEmpty) return;
+          final day = List<_Item>.of(dayItems);
+          rows.add(Wrap(spacing: 10, runSpacing: 10, children: [for (final it in day) _card(it)]));
+          dayItems = [];
+        }
+
         for (final it in list) {
           final day = _dayLabel(it.at);
           if (day != lastDay) {
+            if (cards) flushCards();
             rows.add(
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 14, 4, 6),
@@ -67,13 +79,17 @@ class _HistoryPageState extends State<HistoryPage> {
               ),
             );
             lastDay = day;
+            n = 0;
           }
-          // A faint line between entries of the same day.
-          if (rows.isNotEmpty && rows.last is! Padding) {
-            rows.add(Container(height: 1, margin: const EdgeInsets.symmetric(horizontal: 8), color: tk.line.withValues(alpha: 0.55)));
+          if (cards) {
+            dayItems.add(it);
+          } else {
+            // Every other row a slightly different shade, so they're easy to tell apart.
+            rows.add(_row(it, n.isOdd));
           }
-          rows.add(_row(it));
+          n++;
         }
+        if (cards) flushCards();
         return Padding(
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
           child: Column(
@@ -96,25 +112,15 @@ class _HistoryPageState extends State<HistoryPage> {
                     Expanded(
                       child: Field(hint: 'Search history', icon: Icons.search, onChanged: (v) => setState(() => q = v)),
                     ),
-                    // On the phone the history belongs to the PC, so it's cleared there.
-                    if (!isPhone) const SizedBox(width: 8),
+                    const SizedBox(width: 8),
                     if (!isPhone)
-                      Btn(
-                        'Clear history',
-                        kind: BtnKind.dangerGhost,
-                        onTap: () async {
-                          final ok = await confirm(
-                            context,
-                            'Clear all reading history?',
-                            'Reading sessions are removed. Read counts, ratings, favourites and tags stay, and your files aren\'t touched.',
-                            confirmLabel: 'Clear history',
-                            danger: true,
-                          );
-                          if (ok) {
-                            Db.I.raw.execute('DELETE FROM sessions');
-                            Library.I.changed();
-                          }
-                        },
+                      Seg<bool>(
+                        value: Settings.I.historyCards,
+                        items: const [(false, 'Rows'), (true, 'Cards')],
+                        onChanged: (v) => setState(() {
+                          Settings.I.historyCards = v;
+                          Settings.I.save();
+                        }),
                       ),
                   ],
                 ),
@@ -222,7 +228,85 @@ class _HistoryPageState extends State<HistoryPage> {
     }
   }
 
-  Widget _row(_Item it) {
+  /// History as cards: the cover, what was read and when, and a button to go on.
+  Widget _card(_Item it) {
+    final t = it.title;
+    final s = it.session;
+    final what = s == null
+        ? (it.note ?? '')
+        : '${timeText(s.startedAt)} · ${humanHours(s.activeSeconds)}\n${(s.fromPct * 100).floor()}% → ${(s.toPct * 100).floor()}%${s.completed ? ' · finished' : ''}';
+    return Hoverable(
+      builder: (h) => GestureDetector(
+        onTap: () => _openPage(t),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: 300,
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: h ? tk.raised2 : tk.panel,
+              borderRadius: BorderRadius.circular(lk.rPanel),
+              border: Border.all(color: h ? lk.acc.withValues(alpha: 0.6) : tk.line),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 72,
+                  height: 108,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(5),
+                    child: BookCover(book: t, width: 72),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: SizedBox(
+                    height: 108,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          t.inSeries ? '${t.cardTitle}${t.volumeText.isEmpty ? '' : ' · ${t.volumeText}'}' : t.displayTitle,
+                          style: ts(w: FontWeight.w600),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (t.displayAuthor != null)
+                          Text(
+                            t.displayAuthor!,
+                            style: ts(c: tk.faint, size: 12),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        const SizedBox(height: 4),
+                        Text(
+                          what,
+                          style: ts(c: tk.sec, size: 12, tab: true),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const Spacer(),
+                        Btn(
+                          t.isRead && t.progress >= 0.999 ? 'Read again' : 'Continue',
+                          icon: Icons.play_arrow_rounded,
+                          dense: true,
+                          onTap: () => openBook(context, t),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _row(_Item it, [bool alt = false]) {
     if (isPhone) return _phoneRow(it);
     final t = it.title;
     final s = it.session;
@@ -235,7 +319,10 @@ class _HistoryPageState extends State<HistoryPage> {
           child: Container(
             height: 68,
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(color: h ? tk.raised : null, borderRadius: BorderRadius.circular(lk.rControl)),
+            decoration: BoxDecoration(
+              color: h ? tk.raised2 : (alt ? tk.raised.withValues(alpha: 0.45) : null),
+              borderRadius: BorderRadius.circular(lk.rControl),
+            ),
             child: Row(
               children: [
                 SizedBox(
@@ -262,7 +349,7 @@ class _HistoryPageState extends State<HistoryPage> {
                             ),
                           ),
                           const SizedBox(width: 10),
-                          Btn.ghost(
+                          Btn(
                             t.isRead && t.progress >= 0.999 ? 'Read again' : 'Continue',
                             icon: Icons.play_arrow_rounded,
                             dense: true,

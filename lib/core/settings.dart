@@ -213,6 +213,9 @@ class Settings extends ChangeNotifier {
   String gridStyle = 'comfortable'; // comfortable | compact | cover
   double tileSize = isPhone ? 112 : 168;
   bool listView = false;
+
+  /// History shown as cards instead of rows.
+  bool historyCards = false;
   String sort = 'lastRead';
   bool sortDesc = true;
   bool showContinue = true;
@@ -240,6 +243,7 @@ class Settings extends ChangeNotifier {
       gridStyle = m['gridStyle'] as String? ?? gridStyle;
       tileSize = ((m['tileSize'] as num?)?.toDouble() ?? tileSize).clamp(isPhone ? 80 : 110, 300);
       listView = m['listView'] as bool? ?? false;
+      historyCards = m['historyCards'] as bool? ?? false;
       sort = m['sort'] as String? ?? sort;
       sortDesc = m['sortDesc'] as bool? ?? sortDesc;
       showContinue = m['showContinue'] as bool? ?? true;
@@ -264,6 +268,7 @@ class Settings extends ChangeNotifier {
     'gridStyle': gridStyle,
     'tileSize': tileSize,
     'listView': listView,
+    'historyCards': historyCards,
     'sort': sort,
     'sortDesc': sortDesc,
     'showContinue': showContinue,

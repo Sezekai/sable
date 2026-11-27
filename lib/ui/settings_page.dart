@@ -432,6 +432,11 @@ class _SettingsPageState extends State<SettingsPage> {
                           },
                         ),
                       if (!isPhone)
+                        _reset('Reading history', 'The list of reading sessions (History) is cleared. Read counts, reading positions, ratings, favourites and tags stay.', () {
+                          Db.I.raw.execute('DELETE FROM sessions');
+                          Library.I.changed();
+                        }),
+                      if (!isPhone)
                         _reset('History', 'All reading sessions, read counts and reading positions are cleared. Books, ratings, favourites, tags and bookmarks stay.', () {
                           Db.I.resetHistory();
                           Library.I.load();

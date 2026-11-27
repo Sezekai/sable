@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/rendering.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../core/db.dart';
@@ -554,7 +555,10 @@ class LibraryPageState extends State<LibraryPage> {
                 gap,
                 Drop<String>(
                   value: s.sort,
-                  width: narrow ? 140 : 170,
+                  icon: Icons.sort,
+                  tooltip: 'Sort by',
+                  width: narrow ? 150 : 190,
+                  prefix: narrow ? null : 'Sort: ',
                   items: [for (final e in sortKeys.entries) (e.key, e.value)],
                   onChanged: (v) {
                     s.sort = v;
@@ -991,30 +995,22 @@ class LibraryPageState extends State<LibraryPage> {
     final s = Settings.I;
     return SliverPadding(
       padding: EdgeInsets.fromLTRB(isPhone ? 8 : 13, 0, isPhone ? 8 : 13, 0),
-      sliver: SliverLayoutBuilder(
-        builder: (context, sc) {
-          final g = gridSizes(sc.crossAxisExtent, s.tileSize, s.gridStyle);
-          return SliverGrid(
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: g.cols,
-              mainAxisSpacing: 6,
-              crossAxisSpacing: 6,
-              mainAxisExtent: g.extent,
-            ),
-            delegate: SliverChildBuilderDelegate((_, i) {
-              final e = _entries[i];
-              return EntryCard(
-                entry: e,
-                style: s.gridStyle,
-                ticked: e.volumes.every((v) => ticked.contains(v.key)),
-                anyTicked: ticked.isNotEmpty,
-                onTap: () => _open(e),
-                onDouble: () => _read(e),
-                onTick: () => _tickEntry(e),
-              );
-            }, childCount: _entries.length),
+      // The column count and cover height follow the width without rebuilding
+      // the tiles (a layout builder here rebuilt every tile on every scroll frame).
+      sliver: SliverGrid(
+        gridDelegate: _CoverGridDelegate(s.tileSize, s.gridStyle),
+        delegate: SliverChildBuilderDelegate((_, i) {
+          final e = _entries[i];
+          return EntryCard(
+            entry: e,
+            style: s.gridStyle,
+            ticked: e.volumes.every((v) => ticked.contains(v.key)),
+            anyTicked: ticked.isNotEmpty,
+            onTap: () => _open(e),
+            onDouble: () => _read(e),
+            onTick: () => _tickEntry(e),
           );
-        },
+        }, childCount: _entries.length),
       ),
     );
   }
@@ -1109,12 +1105,15 @@ class LibraryPageState extends State<LibraryPage> {
   }
 }
 
-/// Where a cover is framed: "x,y" (each -1 to 1) as an alignment.
-Alignment coverAlign(String? pos) {
-  if (pos == null) return Alignment.center;
+/// Where a cover is framed: "x,y" or "x,y,zoom" (x and y each -1 to 1).
+Alignment coverAlign(String? pos) => coverFrame(pos).$1;
+
+(Alignment, double) coverFrame(String? pos) {
+  if (pos == null || pos.isEmpty) return (Alignment.center, 1.0);
   final p = pos.split(',');
   final x = double.tryParse(p.first) ?? 0, y = p.length > 1 ? double.tryParse(p[1]) ?? 0 : 0.0;
-  return Alignment(x.clamp(-1, 1), y.clamp(-1, 1));
+  final z = p.length > 2 ? double.tryParse(p[2]) ?? 1 : 1.0;
+  return (Alignment(x.clamp(-1, 1), y.clamp(-1, 1)), z.clamp(1.0, 5.0));
 }
 
 /// A book's cover, or a made-up one from its title when there's no picture.
@@ -1139,12 +1138,13 @@ class BookCover extends StatelessWidget {
     final dpr = MediaQuery.devicePixelRatioOf(context);
     // Decoded at a few set widths, so the same picture is reused (from memory)
     // as tiles come and go and sizes change a little.
-    final px = ((width * dpr / 64).ceil() * 64).clamp(64, 768);
-    return Image.file(
+    final (align, zoom) = coverFrame(coverKey != null ? pos : (pos ?? book.coverPos));
+    final px = ((width * zoom * dpr / 64).ceil() * 64).clamp(64, 1536);
+    final img = Image.file(
       f,
       key: ValueKey(f.path),
       fit: fit,
-      alignment: coverAlign(coverKey != null ? pos : (pos ?? book.coverPos)),
+      alignment: align,
       cacheWidth: px,
       gaplessPlayback: true,
       filterQuality: FilterQuality.medium,
@@ -1161,6 +1161,11 @@ class BookCover extends StatelessWidget {
           ],
         );
       },
+    );
+    // Zoomed in: grown around the chosen spot, and cut to the frame.
+    if (zoom <= 1.001) return img;
+    return ClipRect(
+      child: Transform.scale(scale: zoom, alignment: align, child: img),
     );
   }
 
@@ -1264,6 +1269,54 @@ Widget cornerBadge(IconData? icon, String text, double radius) => Container(
     ],
   ),
 );
+
+/// Whether text fits on one line at this width, worked out from each
+/// character's width (measured once and kept), without laying the text out:
+/// this runs for every tile as the library scrolls.
+final Map<String, double> _charW = {};
+String _charStyle = '';
+bool fitsOneLine(String text, TextStyle style, double width) {
+  final key = '${style.fontFamily}|${style.fontSize}|${style.fontWeight}';
+  if (key != _charStyle) {
+    _charW.clear();
+    _charStyle = key;
+  }
+  var total = 0.0;
+  for (final r in text.runes) {
+    final ch = String.fromCharCode(r);
+    total += _charW[ch] ??= () {
+      final tp = TextPainter(text: TextSpan(text: ch, style: style), textDirection: TextDirection.ltr)..layout();
+      final cw = tp.width;
+      tp.dispose();
+      return cw;
+    }();
+    if (total > width) return false;
+  }
+  return true;
+}
+
+/// The library grid's layout: as many columns as fit the tile size, covers
+/// 1.5 times as tall as wide.
+class _CoverGridDelegate extends SliverGridDelegate {
+  const _CoverGridDelegate(this.tile, this.style);
+  final double tile;
+  final String style;
+  @override
+  SliverGridLayout getLayout(SliverConstraints constraints) {
+    final g = gridSizes(constraints.crossAxisExtent, tile, style);
+    return SliverGridRegularTileLayout(
+      crossAxisCount: g.cols,
+      mainAxisStride: g.extent + 6,
+      crossAxisStride: g.itemW + 6,
+      childMainAxisExtent: g.extent,
+      childCrossAxisExtent: g.itemW,
+      reverseCrossAxis: axisDirectionIsReversed(constraints.crossAxisDirection),
+    );
+  }
+
+  @override
+  bool shouldRelayout(_CoverGridDelegate old) => old.tile != tile || old.style != style;
+}
 
 /// Grid cell sizes: real column width, so covers keep a 1.5 height-to-width shape.
 const double gridTextH = 32;
@@ -1391,40 +1444,42 @@ class EntryCard extends StatelessWidget {
             onLongPress: isPhone ? onTick : null,
             child: MouseRegion(
               cursor: SystemMouseCursors.click,
+              // The hovered (or ticked) tile: a lighter tile inside a thin outline
+              // in the accent gradient, and the cover grows a touch.
               child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(lk.rControl + 2),
-                  color: ticked ? lk.tint(tk.ground, 0.17) : (h ? tk.raised : null),
-                  border: ticked ? Border.all(color: lk.outline, width: lk.outlineWidth) : null,
-                ),
-                padding: const EdgeInsets.all(3),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Container(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(lk.rControl - 1),
-                          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 8, offset: const Offset(0, 3))],
+                padding: const EdgeInsets.all(1.5),
+                decoration: BoxDecoration(borderRadius: BorderRadius.circular(lk.rControl + 3), gradient: h || ticked ? lk.grad : null),
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(lk.rControl + 2),
+                    color: ticked ? lk.tint(tk.ground, 0.17) : (h ? Color.lerp(tk.raised2, Colors.white, 0.05) : null),
+                  ),
+                  padding: const EdgeInsets.all(1.5),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: AnimatedScale(
+                          scale: h ? 1.03 : 1,
+                          duration: const Duration(milliseconds: 120),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(lk.rControl - 1),
+                              boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.5), blurRadius: 8, offset: const Offset(0, 3))],
+                            ),
+                            child: ClipRRect(borderRadius: BorderRadius.circular(lk.rControl - 1), child: cover),
+                          ),
                         ),
-                        child: ClipRRect(borderRadius: BorderRadius.circular(lk.rControl - 1), child: cover),
                       ),
-                    ),
-                    if (style == 'comfortable') ...[
-                      const SizedBox(height: 4),
-                      SizedBox(
-                        height: gridTextH,
-                        width: double.infinity,
-                        child: LayoutBuilder(
-                          builder: (context, tc) {
+                      if (style == 'comfortable') ...[
+                        const SizedBox(height: 4),
+                        SizedBox(
+                          height: gridTextH,
+                          width: double.infinity,
+                          child: () {
                             // Long titles get both lines; the author shows only when the title fits on one.
                             final tStyle = ts(size: 11, w: FontWeight.w600).copyWith(height: 1.3);
-                            final tp = TextPainter(
-                              text: TextSpan(text: title, style: tStyle),
-                              maxLines: 1,
-                              textDirection: TextDirection.ltr,
-                            )..layout(maxWidth: tc.maxWidth);
-                            final oneLine = !tp.didExceedMaxLines;
+                            final oneLine = fitsOneLine(title, tStyle, w - 3);
                             return Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -1438,11 +1493,11 @@ class EntryCard extends StatelessWidget {
                                   ),
                               ],
                             );
-                          },
+                          }(),
                         ),
-                      ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),

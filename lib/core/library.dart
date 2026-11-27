@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart';
 import 'package:path/path.dart' as p;
 
 import 'books.dart';
@@ -336,6 +337,7 @@ class Library extends ChangeNotifier {
   void changed() {
     _volumes = null;
     _series = null;
+    _zipDupes = null;
     notifyListeners();
   }
 
@@ -344,7 +346,25 @@ class Library extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool visible(Book b) => !b.missing && !b.outside && (Settings.I.showCollections || !b.collection);
+  bool visible(Book b) =>
+      !b.missing && !b.outside && (Settings.I.showCollections || !b.collection) && !zipDupes.contains(b.id);
+
+  /// Books inside a ZIP (or other archive) that are also there unpacked: only
+  /// the unpacked file is shown. Matched by content, or by file name and size.
+  Set<int>? _zipDupes;
+  Set<int> get zipDupes {
+    if (_zipDupes != null) return _zipDupes!;
+    final loose = <String>{};
+    for (final b in _books) {
+      if (b.missing || b.outside || isInZip(b.path)) continue;
+      loose.add('fp:${b.fingerprint}');
+      loose.add('ns:${b.fileName.toLowerCase()}|${b.size}');
+    }
+    return _zipDupes = {
+      for (final b in _books)
+        if (isInZip(b.path) && (loose.contains('fp:${b.fingerprint}') || loose.contains('ns:${b.fileName.toLowerCase()}|${b.size}'))) b.id,
+    };
+  }
 
   // ---------------- grouping ----------------
 
@@ -1276,9 +1296,30 @@ class Covers extends ChangeNotifier {
   String fileFor(Book b) => fileForFp(b.userCover ?? b.fingerprint);
   String keyFor(Book b) => b.userCover ?? b.fingerprint;
 
-  File? cached(Book b) {
-    final f = File(fileFor(b));
-    return f.existsSync() ? f : null;
+  File? cached(Book b) => existing(fileFor(b));
+
+  // Cover files known to be there, remembered so scrolling doesn't ask the
+  // disk for every tile (missing ones are looked for each time: they may arrive).
+  final Set<String> _there = {};
+  File? existing(String path) {
+    if (_there.contains(path)) return File(path);
+    if (!File(path).existsSync()) return null;
+    _there.add(path);
+    return File(path);
+  }
+
+  bool _onDisk(String path) {
+    if (File(path).existsSync()) return true;
+    _there.remove(path);
+    return false;
+  }
+
+  /// Cover files were deleted or replaced (cache cleared or moved).
+  void forgetFiles() {
+    _there.clear();
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    version++;
   }
 
   /// Tells the covers on screen to look again (after new covers arrived).
@@ -1291,7 +1332,8 @@ class Covers extends ChangeNotifier {
   void queueMissing() {
     const name = 'Making covers';
     if (safeMode || Jobs.I.isQueued(name)) return;
-    final todo = Library.I.books.where((b) => !b.missing && cached(b) == null).toList();
+    // Asks the disk itself (files can be deleted behind Sable's back).
+    final todo = Library.I.books.where((b) => !b.missing && !_onDisk(fileFor(b))).toList();
     if (todo.isEmpty) return;
     Jobs.I.add(
       Job(name, (job) async {

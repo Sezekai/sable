@@ -18,6 +18,7 @@ import 'core/log.dart';
 import 'core/paths.dart';
 import 'core/samples.dart';
 import 'core/platform.dart';
+import 'core/parse.dart';
 import 'core/server.dart';
 import 'core/settings.dart';
 import 'core/win_screen.dart';
@@ -114,6 +115,10 @@ Future<void> main(List<String> args) async {
     Library.I.onDevice = Downloads.I.isDone;
   }
   Library.I.load();
+  // Room for a big library's covers in memory, so scrolling back doesn't reload them.
+  PaintingBinding.instance.imageCache
+    ..maximumSize = 5000
+    ..maximumSizeBytes = 600 << 20;
 
   // Started by double-clicking an ebook: find the book now and get the book
   // engine going, so the reader opens first and everything else waits.
@@ -633,11 +638,23 @@ Future<void> _runSelftest() async {
       await Future<void>.delayed(const Duration(milliseconds: 800));
       await _screenshot(name);
     }
-    // Back and forward (the mouse's side buttons) move through where you've been.
+    // Back (the mouse's side button) doesn't hop between the app's sections…
     Nav.I.back();
-    check(Nav.I.page == PageId.stats, 'back goes to the page before');
+    check(Nav.I.page == PageId.settings, 'back stays put on a main page');
+    // …but steps back from a book to its series, then to the library, and no further.
+    final sv = Library.I.volumes.values.firstWhere((v) => v.any.displaySeries != null);
+    Nav.I.go(PageId.library);
+    Nav.I.openSeriesKey(normKey(sv.any.displaySeries!));
+    Nav.I.openVolume(sv);
+    Nav.I.back();
+    check(Nav.I.detail == normKey(sv.any.displaySeries!) && Nav.I.detailIsSeries, 'back goes from a book to its series');
+    Nav.I.back();
+    check(Nav.I.detail == null, 'back goes from the series to the library');
+    Nav.I.back();
+    check(Nav.I.detail == null && Nav.I.page == PageId.library, 'back from the library goes nowhere');
     Nav.I.forward();
-    check(Nav.I.page == PageId.settings, 'forward comes back');
+    check(Nav.I.detail != null, 'forward comes back');
+    Nav.I.go(PageId.settings);
     // Editing a theme, then putting it back.
     Look.I.setToken('ground', const Color(0xFF101018));
     check(Look.I.t.ground == const Color(0xFF101018) && Look.I.themeEdited('OLED black'), 'theme colours can be changed');

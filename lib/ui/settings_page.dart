@@ -1080,7 +1080,7 @@ class _SettingsPageState extends State<SettingsPage> {
         await e.delete(recursive: true);
       } catch (_) {}
     }
-    Covers.I.version++;
+    Covers.I.forgetFiles();
     Library.I.changed();
   }
 
@@ -1127,7 +1127,7 @@ class _SettingsPageState extends State<SettingsPage> {
           try {
             await Directory(old).delete(recursive: true);
           } catch (_) {}
-          Covers.I.version++;
+          Covers.I.forgetFiles();
           return '$what moved to $dest';
         }
         if (isData) {

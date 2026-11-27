@@ -401,7 +401,9 @@ class ReaderPageState extends State<ReaderPage> {
     setState(() {});
   }
 
-  void back() {
+  /// Esc / Back: closes what's open first. The mouse's back button never
+  /// leaves full screen (only Esc, F or F11 do).
+  void back({bool mouse = false}) {
     if (Nav.I.keysOpen) {
       Nav.I.toggle('keys');
       return;
@@ -429,7 +431,7 @@ class ReaderPageState extends State<ReaderPage> {
       });
       return;
     }
-    if (Nav.I.fullScreen && !isPhone) {
+    if (Nav.I.fullScreen && !isPhone && !mouse) {
       Nav.I.toggleFullScreen();
       return;
     }
@@ -510,8 +512,12 @@ class ReaderPageState extends State<ReaderPage> {
   /// The mouse's back and forward buttons: turn pages, or leave the reader.
   void _mouse(String button) {
     tracker.activity();
+    if (lightbox && !isPdf) {
+      cmd('sable.stepPicture(${button == 'back' ? -1 : 1})');
+      return;
+    }
     if (Settings.I.mouseInReader == 'leave') {
-      if (button == 'back') back();
+      if (button == 'back') back(mouse: true);
       return;
     }
     button == 'back' ? prev() : next();
@@ -545,7 +551,8 @@ class ReaderPageState extends State<ReaderPage> {
 
   // ---------------- showing and hiding the controls ----------------
 
-  static const _idle = Duration(milliseconds: 2500);
+  // The pointer hides as soon as the mouse stops (a moment, so it doesn't flicker while moving).
+  static const _idle = Duration(milliseconds: 450);
 
   /// The mouse moved over the page: the pointer shows again (the controls
   /// only come and go with a click or a key).
@@ -757,6 +764,17 @@ class ReaderPageState extends State<ReaderPage> {
     final name = _keyName(k, e.character);
     if (e is KeyDownEvent && _dupe(name.toLowerCase())) return KeyEventResult.handled;
     if (menu && menuKey(name)) return KeyEventResult.handled;
+    // A picture is open: the arrows go through the book's pictures (the page stays put).
+    if (lightbox && !isPdf) {
+      if (k == LogicalKeyboardKey.arrowRight || k == LogicalKeyboardKey.arrowDown || k == LogicalKeyboardKey.pageDown) {
+        cmd('sable.stepPicture(1)');
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowLeft || k == LogicalKeyboardKey.arrowUp || k == LogicalKeyboardKey.pageUp) {
+        cmd('sable.stepPicture(-1)');
+        return KeyEventResult.handled;
+      }
+    }
     if (k == LogicalKeyboardKey.escape) {
       back();
     } else if (k == LogicalKeyboardKey.space) {
@@ -1475,6 +1493,14 @@ class ReaderPageState extends State<ReaderPage> {
             hint: 'Words to find, then Enter',
             icon: Icons.search,
             onSubmitted: _runSearch,
+            // Clears the search and its highlights in the book.
+            onClear: () {
+              cmd('sable.clearSearch()');
+              setState(() {
+                results = [];
+                searching = false;
+              });
+            },
           ),
         ),
         if (searching)

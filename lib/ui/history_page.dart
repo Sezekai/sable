@@ -4,6 +4,7 @@ import '../core/db.dart';
 import '../core/jobs.dart';
 import '../core/library.dart';
 import '../core/platform.dart';
+import 'app.dart';
 import 'library_page.dart';
 import 'reader_page.dart';
 import 'widgets.dart';
@@ -156,7 +157,7 @@ class _HistoryPageState extends State<HistoryPage> {
         : '${timeText(s.startedAt)} · ${humanHours(s.activeSeconds)} · ${(s.fromPct * 100).floor()}% → ${(s.toPct * 100).floor()}%'
               '${s.completed ? ' · finished' : ''} · ${s.device}';
     return GestureDetector(
-      onTap: () => openBook(context, t),
+      onTap: () => _openPage(t),
       onLongPress: s == null
           ? null
           : () async {
@@ -203,11 +204,22 @@ class _HistoryPageState extends State<HistoryPage> {
                 ],
               ),
             ),
-            Icon(Icons.play_arrow_rounded, size: 20, color: tk.faint),
+            IconBtn(Icons.play_arrow_rounded, size: 22, tooltip: 'Read', onTap: () => openBook(context, t)),
           ],
         ),
       ),
     );
+  }
+
+  /// A click on an entry opens the book's page (books read from outside the
+  /// library have no page: they open in the reader).
+  void _openPage(Book t) {
+    final v = Library.I.volumeOf(t);
+    if (v == null || t.outside) {
+      openBook(context, t);
+    } else {
+      Nav.I.openVolume(v);
+    }
   }
 
   Widget _row(_Item it) {
@@ -215,103 +227,110 @@ class _HistoryPageState extends State<HistoryPage> {
     final t = it.title;
     final s = it.session;
     return Hoverable(
-      builder: (h) => Container(
-        height: 68,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(color: h ? tk.raised : null, borderRadius: BorderRadius.circular(lk.rControl)),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 40,
-              height: 60,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: BookCover(book: t, width: 42),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+      builder: (h) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => _openPage(t),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: Container(
+            height: 68,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(color: h ? tk.raised : null, borderRadius: BorderRadius.circular(lk.rControl)),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 40,
+                  height: 60,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: BookCover(book: t, width: 42),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        child: Text(
-                          t.inSeries ? '${t.cardTitle}${t.volumeText.isEmpty ? '' : ' · ${t.volumeText}'}' : t.displayTitle,
-                          style: ts(w: FontWeight.w600),
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              t.inSeries ? '${t.cardTitle}${t.volumeText.isEmpty ? '' : ' · ${t.volumeText}'}' : t.displayTitle,
+                              style: ts(w: FontWeight.w600),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Btn.ghost(
+                            t.isRead && t.progress >= 0.999 ? 'Read again' : 'Continue',
+                            icon: Icons.play_arrow_rounded,
+                            dense: true,
+                            onTap: () => openBook(context, t),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 10),
-                      Btn.ghost(
-                        t.isRead && t.progress >= 0.999 ? 'Read again' : 'Continue',
-                        icon: Icons.play_arrow_rounded,
-                        dense: true,
-                        onTap: () => openBook(context, t),
+                      Text(
+                        [if (t.displayAuthor != null) t.displayAuthor!, t.format.toUpperCase()].join(' · '),
+                        style: ts(c: tk.faint, size: 12),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ],
                   ),
-                  Text(
-                    [if (t.displayAuthor != null) t.displayAuthor!, t.format.toUpperCase()].join(' · '),
-                    style: ts(c: tk.faint, size: 12),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-            if (s != null) ...[
-              SizedBox(
-                width: 130,
-                child: Text('${timeText(s.startedAt)} → ${timeText(s.endedAt)}', style: ts(c: tk.sec, tab: true)),
-              ),
-              SizedBox(
-                width: 80,
-                child: Text(humanHours(s.activeSeconds), style: ts(c: tk.sec, tab: true)),
-              ),
-              SizedBox(
-                width: 170,
-                child: Text(
-                  '${(s.fromPct * 100).floor()}% → ${(s.toPct * 100).floor()}% · ${s.pagesRead} pages',
-                  style: ts(c: tk.sec, tab: true),
                 ),
-              ),
-              SizedBox(
-                width: 70,
-                child: s.completed
-                    ? Text(
-                        'Finished',
-                        style: ts(c: tk.ok, w: FontWeight.w600),
-                      )
-                    : const SizedBox(),
-              ),
-              SizedBox(
-                width: 40,
-                child: Text(s.device, style: ts(c: tk.faint, size: 12)),
-              ),
-            ] else
-              SizedBox(
-                width: 490,
-                child: Text(it.note ?? '', style: ts(c: tk.sec)),
-              ),
-            if (s != null)
-              IconBtn(
-                Icons.delete_outline,
-                tooltip: 'Remove this entry',
-                onTap: () async {
-                  if (await confirm(
-                    context,
-                    'Remove this history entry?',
-                    'Only the record of this session is removed.',
-                    confirmLabel: 'Remove entry',
-                  )) {
-                    Db.I.deleteSession(s.id);
-                    Library.I.changed();
-                  }
-                },
-              ),
-          ],
+                if (s != null) ...[
+                  SizedBox(
+                    width: 130,
+                    child: Text('${timeText(s.startedAt)} → ${timeText(s.endedAt)}', style: ts(c: tk.sec, tab: true)),
+                  ),
+                  SizedBox(
+                    width: 80,
+                    child: Text(humanHours(s.activeSeconds), style: ts(c: tk.sec, tab: true)),
+                  ),
+                  SizedBox(
+                    width: 170,
+                    child: Text(
+                      '${(s.fromPct * 100).floor()}% → ${(s.toPct * 100).floor()}% · ${s.pagesRead} pages',
+                      style: ts(c: tk.sec, tab: true),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 70,
+                    child: s.completed
+                        ? Text(
+                            'Finished',
+                            style: ts(c: tk.ok, w: FontWeight.w600),
+                          )
+                        : const SizedBox(),
+                  ),
+                  SizedBox(
+                    width: 40,
+                    child: Text(s.device, style: ts(c: tk.faint, size: 12)),
+                  ),
+                ] else
+                  SizedBox(
+                    width: 490,
+                    child: Text(it.note ?? '', style: ts(c: tk.sec)),
+                  ),
+                if (s != null)
+                  IconBtn(
+                    Icons.delete_outline,
+                    tooltip: 'Remove this entry',
+                    onTap: () async {
+                      if (await confirm(
+                        context,
+                        'Remove this history entry?',
+                        'Only the record of this session is removed.',
+                        confirmLabel: 'Remove entry',
+                      )) {
+                        Db.I.deleteSession(s.id);
+                        Library.I.changed();
+                      }
+                    },
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );

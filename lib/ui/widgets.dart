@@ -293,7 +293,11 @@ class Field extends StatelessWidget {
     this.icon,
     this.autofocus = false,
     this.mono = false,
+    this.onClear,
   });
+
+  /// Shows an × while there's text; it empties the box and calls this.
+  final VoidCallback? onClear;
   final TextEditingController? controller;
   final String? hint;
   final ValueChanged<String>? onChanged;
@@ -325,6 +329,24 @@ class Field extends StatelessWidget {
           hintStyle: ts(c: tk.faint),
           prefixIcon: icon == null ? null : Icon(icon, size: 16, color: tk.faint),
           prefixIconConstraints: BoxConstraints(minWidth: 30, minHeight: lk.hControl),
+          suffixIcon: onClear == null || controller == null
+              ? null
+              : ListenableBuilder(
+                  listenable: controller!,
+                  builder: (_, _) => controller!.text.isEmpty
+                      ? const SizedBox.shrink()
+                      : MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: () {
+                              controller!.clear();
+                              onClear!();
+                            },
+                            child: Tooltip(message: 'Clear', child: Icon(Icons.close, size: 16, color: tk.sec)),
+                          ),
+                        ),
+                ),
+          suffixIconConstraints: BoxConstraints(minWidth: 30, minHeight: lk.hControl),
           filled: true,
           fillColor: tk.field,
           contentPadding: const EdgeInsets.symmetric(horizontal: 10),

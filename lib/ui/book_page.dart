@@ -37,6 +37,13 @@ void showInFolder(Book b) {
   }
 }
 
+/// A column with a thin line down its left side, between the page's columns.
+Widget _ruled(Widget child, {double gap = 24}) => Container(
+  padding: EdgeInsets.only(left: gap),
+  decoration: BoxDecoration(border: Border(left: BorderSide(color: tk.line))),
+  child: child,
+);
+
 Widget _crumbs(List<(String, VoidCallback?)> items) => Row(
   children: [
     IconBtn(
@@ -243,18 +250,18 @@ class BookPage extends StatelessWidget {
             ],
           ),
         ),
-        const SizedBox(width: 28),
+        const SizedBox(width: 24),
         Expanded(
-          child: twoCols
+          child: _ruled(twoCols
               ? Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(flex: 11, child: colA),
-                    const SizedBox(width: 24),
-                    Expanded(flex: 9, child: colB),
+                    const SizedBox(width: 20),
+                    Expanded(flex: 9, child: _ruled(colB, gap: 20)),
                   ],
                 )
-              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [colA, const SizedBox(height: 20), colB]),
+              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [colA, const SizedBox(height: 20), colB])),
         ),
       ],
     );
@@ -849,18 +856,18 @@ class _SeriesPageState extends State<SeriesPage> {
             ],
           ),
         ),
-        const SizedBox(width: 28),
+        const SizedBox(width: 24),
         Expanded(
-          child: twoCols
+          child: _ruled(twoCols
               ? Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(flex: 9, child: info),
-                    const SizedBox(width: 24),
-                    Expanded(flex: 11, child: books),
+                    const SizedBox(width: 20),
+                    Expanded(flex: 11, child: _ruled(books, gap: 20)),
                   ],
                 )
-              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [info, const SizedBox(height: 18), books]),
+              : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [info, const SizedBox(height: 18), books])),
         ),
       ],
     );
@@ -1052,6 +1059,16 @@ class _SeriesPageState extends State<SeriesPage> {
                   style: ts(c: lk.acc, w: FontWeight.w600, tab: true),
                 ),
               if (isPhone && Downloads.I.isQueued(b)) ...[const SizedBox(width: 8), Icon(Icons.downloading, size: 16, color: lk.acc)],
+              // Read straight from the list.
+              if (!selecting && (!isPhone || Downloads.I.isDone(b))) ...[
+                const SizedBox(width: 10),
+                Btn(
+                  v.inProgress ? 'Continue' : (v.isRead ? 'Read again' : 'Read'),
+                  icon: Icons.auto_stories,
+                  dense: true,
+                  onTap: () => openBook(context, b),
+                ),
+              ],
               PopupMenuButton<String>(
                 tooltip: '',
                 icon: Icon(Icons.more_horiz, size: 18, color: tk.sec),

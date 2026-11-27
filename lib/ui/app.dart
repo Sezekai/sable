@@ -60,7 +60,14 @@ class Nav extends ChangeNotifier {
     page = s.$1;
     detail = s.$2;
     detailIsSeries = s.$3;
+    _atTop();
     notifyListeners();
+  }
+
+  // Back only steps through books and series: once you're on a main page
+  // (the library, history, stats…) there's nothing further back.
+  void _atTop() {
+    if (detail == null) _back.clear();
   }
 
   bool get canGoBack => _back.isNotEmpty;
@@ -80,9 +87,10 @@ class Nav extends ChangeNotifier {
 
   void go(PageId p) {
     if (p == page && (p != PageId.library || detail == null)) return;
-    _remember();
     page = p;
-    if (p != PageId.library) detail = null;
+    detail = null;
+    _back.clear();
+    _forward.clear();
     notifyListeners();
   }
 
@@ -124,8 +132,9 @@ class Nav extends ChangeNotifier {
 
   void closeDetail() {
     if (detail == null) return;
-    _remember();
+    _forward.add(_here);
     detail = null;
+    _atTop();
     notifyListeners();
   }
 
@@ -364,7 +373,11 @@ class _ShellState extends State<Shell> {
                       Expanded(
                         child: Row(
                           children: [
-                            if (!nav.railHidden && !nav.panelsHidden) const Rail(),
+                            if (!nav.railHidden && !nav.panelsHidden) ...[
+                              const Rail(),
+                              // A line between the side menu and the page.
+                              Container(width: 1, color: tk.line),
+                            ],
                             Expanded(child: _content(nav)),
                           ],
                         ),

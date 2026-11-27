@@ -63,10 +63,10 @@ export class Scroller extends HTMLElement {
             #container { position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden;
                 scrollbar-width: none; overflow-anchor: none; }
             .part { position: relative; }
-            .box { position: relative; }
-            .box iframe { display: block; border: 0; width: 100%; height: 100%; }
+            .box { position: relative; overflow: hidden; }
+            .box iframe { display: block; border: 0; width: 100%; }
             .divider { box-sizing: border-box; display: flex; align-items: center; gap: 16px;
-                margin: 0 auto; padding: 36px 24px 28px; color: var(--muted, #888);
+                margin: 0 auto; padding: 18px 24px 14px; color: var(--muted, #888);
                 font: 600 12px/1.3 system-ui, "Segoe UI", sans-serif; letter-spacing: .08em; text-transform: uppercase; }
             .divider span { max-width: 70%; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
             .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .35; }
@@ -175,9 +175,39 @@ export class Scroller extends HTMLElement {
 
     // A part's height follows its text; parts above the screen keep the reading
     // place still when they change size.
+    // The text's own height: from the top of the first thing to the bottom of
+    // the last, so blank space a book puts before or after a chapter (big
+    // margins, a page-tall body) doesn't make a gap between chapters.
+    #extent(doc) {
+        const b = doc.body
+        if (!b) return { trim: 0, h: doc.documentElement.scrollHeight }
+        const r = doc.createRange()
+        r.selectNodeContents(b)
+        const rect = r.getBoundingClientRect()
+        const cs = doc.defaultView.getComputedStyle(b)
+        const padTop = parseFloat(cs.paddingTop) || 0, padBottom = parseFloat(cs.paddingBottom) || 0
+        if (!(rect.height > 0)) return { trim: 0, h: Math.max(40, doc.documentElement.scrollHeight) }
+        // Keep the body's own padding (Sable's chapter margins); drop the rest.
+        const trim = Math.max(0, Math.floor(rect.top - padTop))
+        return { trim, h: Math.ceil(rect.bottom + padBottom) - trim }
+    }
+
     #measure(p) {
         if (!p.doc?.documentElement) return
-        const h = Math.max(40, Math.ceil(p.doc.documentElement.scrollHeight))
+        const ext = this.#extent(p.doc)
+        if (ext.trim !== p.trim) {
+            p.trim = ext.trim
+            if (p.frame) {
+                p.frame.style.marginTop = `${-ext.trim}px`
+                p.frame.style.height = `${ext.h + ext.trim}px`
+            }
+        } else if (p.frame) p.frame.style.height = `${ext.h + ext.trim}px`
+        // Highlights sit over the frame, moved up with it.
+        if (p.overlayer) {
+            p.overlayer.element.style.top = `${-ext.trim}px`
+            p.overlayer.element.style.height = `${ext.h + ext.trim}px`
+        }
+        const h = Math.max(40, ext.h)
         if (Math.abs(h - p.h) < 1) return
         const c = this.#container
         const top = p.el.offsetTop
@@ -186,7 +216,10 @@ export class Scroller extends HTMLElement {
         p.h = h
         p.box.style.height = `${h}px`
         p.overlayer?.redraw?.()
-        if (above) this.#setTop(c.scrollTop + h - old)
+        if (above) {
+            this.#setTop(c.scrollTop + h - old)
+            this.onShift?.(h - old)
+        }
         this.#learn()
         // Just jumped somewhere in this part: stay on the spot while it settles.
         const pend = this.#pending
@@ -230,9 +263,15 @@ export class Scroller extends HTMLElement {
             this.dispatchEvent(new CustomEvent('create-overlayer', {
                 detail: {
                     doc, index: p.index,
-                    attach: o => { p.overlayer = o; p.box.append(o.element) },
+                    attach: o => {
+                        p.overlayer = o
+                        o.element.style.top = `${-(p.trim ?? 0)}px`
+                        p.box.append(o.element)
+                    },
                 },
             }))
+            // Pictures loading change the height too (even when the page's box doesn't).
+            doc.addEventListener('load', () => this.#measure(p), true)
             p.ro = new ResizeObserver(() => this.#measure(p))
             if (doc.body) p.ro.observe(doc.body)
             doc.fonts?.ready?.then(() => this.#measure(p))
@@ -312,7 +351,8 @@ export class Scroller extends HTMLElement {
         const fraction = Math.max(0, Math.min(1, y / Math.max(1, p.h)))
         const size = Math.min(1, c.clientHeight / Math.max(1, p.h))
         let range = null
-        try { if (p.doc) range = visibleRange(p.doc, Math.max(0, y), Math.max(0, y) + c.clientHeight) } catch { }
+        const t = p.trim ?? 0
+        try { if (p.doc) range = visibleRange(p.doc, Math.max(0, y) + t, Math.max(0, y) + t + c.clientHeight) } catch { }
         this.dispatchEvent(new CustomEvent('relocate', { detail: { reason, range, index: p.index, fraction, size } }))
     }
 
@@ -325,9 +365,10 @@ export class Scroller extends HTMLElement {
         if (typeof anchor === 'number') return top + anchor * p.h
         const rects = anchor.getClientRects?.()
         const rect = rects && ([...rects].find(r => r.width > 0 && r.height > 0) ?? rects[0])
-        if (rect) return top + rect.top
+        const t = p.trim ?? 0
+        if (rect) return top + rect.top - t
         const r2 = anchor.getBoundingClientRect?.()
-        return r2 ? top + r2.top : top
+        return r2 ? top + r2.top - t : top
     }
 
     #scrollToAnchor(p, anchor, reason, quiet) {

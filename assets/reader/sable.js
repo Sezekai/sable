@@ -473,8 +473,14 @@ const onWheel = e => {
     const dx = e.deltaMode === 1 ? e.deltaX * 40 : e.deltaX
     const d = Math.abs(dy) >= Math.abs(dx) ? dy : dx
     if (!d) return
-    // Scroll mode scrolls like a web page (the browser's own smooth scrolling).
-    if (view?.renderer?.continuous) { post('activity'); return }
+    // Scroll mode: Sable's own smooth scrolling, gentle for a little turn of the wheel
+    // and faster the more you keep turning.
+    if (view?.renderer?.continuous) {
+        e.preventDefault()
+        post('activity')
+        continuousWheel(e.deltaMode === 1 ? d * 40 : e.deltaMode === 2 ? d * window.innerHeight : d)
+        return
+    }
     e.preventDefault()
     post('activity')
     if (style.flow === 'scrolled') return smoothScroll(d)
@@ -486,6 +492,40 @@ const onWheel = e => {
         wheelAcc = 0
         wheelLock = now + 280
     }
+}
+
+// Scroll mode (one long page): each notch adds to where it's heading and it
+// eases there. One notch moves a little (about 55 px); notches close together
+// build up speed, up to five times as far each.
+let cGoal = null, cAnim = 0, cLast = 0, cStreak = 0, cTime = 0, cDir = 0
+const continuousWheel = d => {
+    const r = view?.renderer
+    if (!r?.freeScroll || !d) return
+    const now = performance.now()
+    const dir = Math.sign(d)
+    cStreak = now - cTime < 160 && dir === cDir ? cStreak + 1 : 0
+    cDir = dir
+    cTime = now
+    // A trackpad sends many small amounts: those move only as much.
+    const notch = dir * Math.min(Math.abs(d), 120) / 120
+    const step = notch * 55 * (1 + Math.min(cStreak, 14) * 0.3)
+    const cur = r.start
+    if (cGoal == null || Math.sign(cGoal - cur) !== dir) cGoal = cur
+    cGoal = Math.max(0, Math.min(r.viewSize - r.size, cGoal + step))
+    if (!r.onShift) r.onShift = dy => { if (cGoal != null) cGoal += dy }
+    if (!cAnim) { cLast = 0; cAnim = requestAnimationFrame(cTick) }
+}
+const cTick = now => {
+    const r = view?.renderer
+    if (!r?.freeScroll || cGoal == null) { cAnim = 0; return }
+    const dt = cLast ? Math.min(50, now - cLast) : 16
+    cLast = now
+    const left = cGoal - r.start
+    if (Math.abs(left) < 0.6) { cAnim = 0; cGoal = null; return }
+    const m = left * (1 - Math.exp(-dt / 75))
+    const moved = r.freeScroll(Math.abs(m) < 1 ? Math.sign(left) : m)
+    if (moved === 0) { cAnim = 0; cGoal = null; return }
+    cAnim = requestAnimationFrame(cTick)
 }
 
 // Scroll mode: the wheel adds to a distance still to go, which eases out
@@ -874,6 +914,7 @@ window.sable = {
     setStyle: s => { style = { ...style, ...s }; applyStyle() },
     setTheme: t => { theme = { ...theme, ...t }; applyTheme(); applyStyle() },
     closeLightbox,
+    stepPicture,
     setMenu: open => { menuOpen = !!open },
     setTyping: on => { typing = !!on },
     setCursor,
@@ -884,7 +925,9 @@ window.sable = {
         view.clearSearch()
         if (!q) { post('search', { results: [], done: true }); return }
         const results = []
-        for await (const r of view.search({ query: q })) {
+        // Found words are highlighted (in the accent colour), not boxed.
+        const { Overlayer } = await import('./overlayer.js')
+        for await (const r of view.search({ query: q, draw: Overlayer.highlight, drawOptions: { color: theme.accent ?? '#b56ce8' } })) {
             if (run !== searchRun) return
             if (r === 'done') break
             if (r.subitems) {

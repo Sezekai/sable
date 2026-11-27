@@ -380,6 +380,10 @@ class LibraryPageState extends State<LibraryPage> {
                 focusNode: Nav.I.searchFocus,
                 hint: 'Search titles, series, authors, tags',
                 icon: Icons.search,
+                onClear: () {
+                  Library.I.filter.search = '';
+                  Library.I.changed();
+                },
                 onChanged: (v) {
                   Library.I.filter.search = v;
                   Library.I.changed();
@@ -504,6 +508,10 @@ class LibraryPageState extends State<LibraryPage> {
                     focusNode: Nav.I.searchFocus,
                     hint: narrow ? 'Search  ( / )' : 'Search titles, series, authors and tags  ( / )',
                     icon: Icons.search,
+                    onClear: () {
+                      Library.I.filter.search = '';
+                      Library.I.changed();
+                    },
                     onChanged: (v) {
                       Library.I.filter.search = v;
                       Library.I.changed();
@@ -879,6 +887,8 @@ class LibraryPageState extends State<LibraryPage> {
       child: Scrollbar(
         controller: scroll,
         child: CustomScrollView(
+          // Covers a couple of screens ahead are read before they scroll into view.
+          cacheExtent: 1600,
           controller: scroll,
           slivers: [
             if (cont.isNotEmpty) SliverToBoxAdapter(child: _continueStrip(cont)),
@@ -1123,22 +1133,34 @@ class BookCover extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     File? f;
-    if (coverKey != null) {
-      final c = File(Covers.I.fileForFp(coverKey!));
-      if (c.existsSync()) f = c;
-    }
+    if (coverKey != null) f = Covers.I.existing(Covers.I.fileForFp(coverKey!));
     f ??= Covers.I.cached(book);
     if (f == null) return _made();
     final dpr = MediaQuery.devicePixelRatioOf(context);
+    // Decoded at a few set widths, so the same picture is reused (from memory)
+    // as tiles come and go and sizes change a little.
+    final px = ((width * dpr / 64).ceil() * 64).clamp(64, 768);
     return Image.file(
       f,
-      key: ValueKey('${f.path}${Covers.I.version}'),
+      key: ValueKey(f.path),
       fit: fit,
       alignment: coverAlign(coverKey != null ? pos : (pos ?? book.coverPos)),
-      cacheWidth: (width * dpr).round().clamp(32, 720),
+      cacheWidth: px,
       gaplessPlayback: true,
       filterQuality: FilterQuality.medium,
       errorBuilder: (_, _, _) => _made(),
+      // While a picture is read the first time: a quiet tile, then it fades in.
+      // Pictures already in memory show at once, without a flash.
+      frameBuilder: (context, child, frame, sync) {
+        if (sync) return child;
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            ColoredBox(color: tk.raised),
+            AnimatedOpacity(opacity: frame == null ? 0 : 1, duration: const Duration(milliseconds: 140), child: child),
+          ],
+        );
+      },
     );
   }
 
